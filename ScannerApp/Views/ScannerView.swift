@@ -19,8 +19,17 @@ struct ScannerView: View {
     @State private var lastStableRectangle: VNRectangleObservation?
     @State private var steadyProgress: CGFloat = 0
     @State private var cameraViewSize: CGSize = .zero
+    @State private var captureMode: CaptureMode = .auto
 
     private let steadyDuration: TimeInterval = 1.0
+
+    private var lightIconName: String {
+        switch cameraManager.lightMode {
+        case .auto: return "bolt.badge.automatic"
+        case .on: return "bolt.fill"
+        case .off: return "bolt.slash"
+        }
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -83,22 +92,81 @@ struct ScannerView: View {
 
                             Spacer()
 
-                            // Center-bottom: Status badge
-                            StatusBadge(
-                                isDetected: cameraManager.detectedRectangle != nil,
-                                isHoldingSteady: isHoldingSteady,
-                                progress: steadyProgress
-                            )
+                            // Center-bottom: Status badge (only in auto mode)
+                            if captureMode == .auto {
+                                StatusBadge(
+                                    isDetected: cameraManager.detectedRectangle != nil,
+                                    isHoldingSteady: isHoldingSteady,
+                                    progress: steadyProgress
+                                )
+                            }
 
                             // Bottom: Action buttons
                             HStack {
-                                Button(action: {}) {
+                                // Settings menu (3 dots)
+                                Menu {
+                                    // Light settings
+                                    Menu {
+                                        ForEach(LightMode.allCases, id: \.self) { mode in
+                                            Button {
+                                                cameraManager.setTorchMode(mode)
+                                            } label: {
+                                                HStack {
+                                                    Text(mode.rawValue)
+                                                    if cameraManager.lightMode == mode {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Light", systemImage: lightIconName)
+                                    }
+
+                                    // Capture mode settings
+                                    Menu {
+                                        ForEach(CaptureMode.allCases, id: \.self) { mode in
+                                            Button {
+                                                captureMode = mode
+                                                if mode == .manual {
+                                                    resetSteadyState()
+                                                }
+                                            } label: {
+                                                HStack {
+                                                    Text(mode.rawValue)
+                                                    if captureMode == mode {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Capture", systemImage: "camera")
+                                    }
+                                } label: {
                                     Image(systemName: "ellipsis")
                                         .font(.system(size: 20))
                                         .foregroundColor(.white)
                                         .frame(width: 44, height: 44)
                                         .background(Color.black.opacity(0.5))
                                         .clipShape(Circle())
+                                }
+
+                                Spacer()
+
+                                // Manual capture button (only in manual mode)
+                                if captureMode == .manual {
+                                    Button(action: manualCapture) {
+                                        ZStack {
+                                            Circle()
+                                                .stroke(Color.white, lineWidth: 3)
+                                                .frame(width: 66, height: 66)
+                                            Circle()
+                                                .fill(Color.white)
+                                                .frame(width: 54, height: 54)
+                                        }
+                                    }
+                                    .disabled(cameraManager.isCapturing)
                                 }
 
                                 Spacer()
@@ -171,6 +239,9 @@ struct ScannerView: View {
     // MARK: - Auto-capture Logic
 
     private func handleRectangleDetection(_ newRect: VNRectangleObservation?) {
+        // Only handle auto-capture in auto mode
+        guard captureMode == .auto else { return }
+
         guard let rect = newRect else {
             resetSteadyState()
             return
@@ -184,6 +255,10 @@ struct ScannerView: View {
             resetSteadyState()
             lastStableRectangle = rect
         }
+    }
+
+    private func manualCapture() {
+        capturePhoto()
     }
 
     private func isRectangleSimilar(_ rect1: VNRectangleObservation, _ rect2: VNRectangleObservation) -> Bool {

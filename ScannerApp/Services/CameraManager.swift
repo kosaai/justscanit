@@ -2,16 +2,29 @@ import AVFoundation
 import UIKit
 import Vision
 
+enum LightMode: String, CaseIterable {
+    case auto = "Auto"
+    case on = "On"
+    case off = "Off"
+}
+
+enum CaptureMode: String, CaseIterable {
+    case auto = "Auto"
+    case manual = "Manual"
+}
+
 class CameraManager: NSObject, ObservableObject {
     @Published var detectedRectangle: VNRectangleObservation?
     @Published var isCapturing = false
     @Published var capturedImage: UIImage?
     @Published var error: CameraError?
+    @Published var lightMode: LightMode = .off
 
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let processingQueue = DispatchQueue(label: "com.scanner.processing", qos: .userInteractive)
+    private var cameraDevice: AVCaptureDevice?
 
     private var rectangleDetectionRequest: VNDetectRectanglesRequest?
     private var lastDetectionTime = Date()
@@ -83,6 +96,7 @@ class CameraManager: NSObject, ObservableObject {
             return
         }
         session.addInput(input)
+        self.cameraDevice = camera
 
         // Configure camera for document scanning
         try? camera.lockForConfiguration()
@@ -154,8 +168,37 @@ class CameraManager: NSObject, ObservableObject {
 
     func stopSession() {
         guard session.isRunning else { return }
+        setTorchMode(.off)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.session.stopRunning()
+        }
+    }
+
+    // MARK: - Torch Control
+
+    func setTorchMode(_ mode: LightMode) {
+        guard let device = cameraDevice, device.hasTorch else { return }
+
+        do {
+            try device.lockForConfiguration()
+            switch mode {
+            case .on:
+                if device.isTorchModeSupported(.on) {
+                    device.torchMode = .on
+                }
+            case .off:
+                device.torchMode = .off
+            case .auto:
+                if device.isTorchModeSupported(.auto) {
+                    device.torchMode = .auto
+                }
+            }
+            device.unlockForConfiguration()
+            DispatchQueue.main.async {
+                self.lightMode = mode
+            }
+        } catch {
+            print("Torch control error: \(error)")
         }
     }
 
