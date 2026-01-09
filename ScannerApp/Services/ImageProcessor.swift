@@ -169,28 +169,98 @@ class ImageProcessor {
 
     // MARK: - Detect and Crop
 
+    /// Inset margin as a percentage (0.02 = 2% inward from each edge)
+    private let cropMarginPercent: CGFloat = 0.02
+
     func detectAndCrop(_ image: UIImage, rectangle: VNRectangleObservation) -> UIImage? {
         let imageSize = image.size
 
         // Convert normalized coordinates to image coordinates
-        let topLeft = CGPoint(
+        var topLeft = CGPoint(
             x: rectangle.topLeft.x * imageSize.width,
             y: (1 - rectangle.topLeft.y) * imageSize.height
         )
-        let topRight = CGPoint(
+        var topRight = CGPoint(
             x: rectangle.topRight.x * imageSize.width,
             y: (1 - rectangle.topRight.y) * imageSize.height
         )
-        let bottomRight = CGPoint(
+        var bottomRight = CGPoint(
             x: rectangle.bottomRight.x * imageSize.width,
             y: (1 - rectangle.bottomRight.y) * imageSize.height
         )
-        let bottomLeft = CGPoint(
+        var bottomLeft = CGPoint(
             x: rectangle.bottomLeft.x * imageSize.width,
             y: (1 - rectangle.bottomLeft.y) * imageSize.height
         )
 
-        return correctPerspective(image, corners: [topLeft, topRight, bottomRight, bottomLeft])
+        // Apply inward margin to crop slightly inside the detected edges
+        // This helps remove any background that Vision may have included
+        let corners = applyInwardMargin(
+            topLeft: &topLeft,
+            topRight: &topRight,
+            bottomRight: &bottomRight,
+            bottomLeft: &bottomLeft,
+            marginPercent: cropMarginPercent
+        )
+
+        return correctPerspective(image, corners: corners)
+    }
+
+    /// Get corners from rectangle with inward margin applied (for crop tool initialization)
+    func getCornersFromRectangle(_ rectangle: VNRectangleObservation, imageSize: CGSize) -> [CGPoint] {
+        var topLeft = CGPoint(
+            x: rectangle.topLeft.x * imageSize.width,
+            y: (1 - rectangle.topLeft.y) * imageSize.height
+        )
+        var topRight = CGPoint(
+            x: rectangle.topRight.x * imageSize.width,
+            y: (1 - rectangle.topRight.y) * imageSize.height
+        )
+        var bottomRight = CGPoint(
+            x: rectangle.bottomRight.x * imageSize.width,
+            y: (1 - rectangle.bottomRight.y) * imageSize.height
+        )
+        var bottomLeft = CGPoint(
+            x: rectangle.bottomLeft.x * imageSize.width,
+            y: (1 - rectangle.bottomLeft.y) * imageSize.height
+        )
+
+        return applyInwardMargin(
+            topLeft: &topLeft,
+            topRight: &topRight,
+            bottomRight: &bottomRight,
+            bottomLeft: &bottomLeft,
+            marginPercent: cropMarginPercent
+        )
+    }
+
+    /// Apply inward margin by moving each corner toward the center
+    private func applyInwardMargin(
+        topLeft: inout CGPoint,
+        topRight: inout CGPoint,
+        bottomRight: inout CGPoint,
+        bottomLeft: inout CGPoint,
+        marginPercent: CGFloat
+    ) -> [CGPoint] {
+        // Calculate center of the quadrilateral
+        let centerX = (topLeft.x + topRight.x + bottomRight.x + bottomLeft.x) / 4
+        let centerY = (topLeft.y + topRight.y + bottomRight.y + bottomLeft.y) / 4
+        let center = CGPoint(x: centerX, y: centerY)
+
+        // Move each corner toward center by marginPercent
+        func moveTowardCenter(_ point: CGPoint) -> CGPoint {
+            return CGPoint(
+                x: point.x + (center.x - point.x) * marginPercent,
+                y: point.y + (center.y - point.y) * marginPercent
+            )
+        }
+
+        return [
+            moveTowardCenter(topLeft),
+            moveTowardCenter(topRight),
+            moveTowardCenter(bottomRight),
+            moveTowardCenter(bottomLeft)
+        ]
     }
 }
 

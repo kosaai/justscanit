@@ -14,6 +14,9 @@ struct ScannerView: View {
 
     var body: some View {
         ZStack {
+            // Black background for letterboxing
+            Color.black.ignoresSafeArea()
+
             // Camera preview
             GeometryReader { geometry in
                 ZStack {

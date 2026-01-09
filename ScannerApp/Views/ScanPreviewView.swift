@@ -58,6 +58,7 @@ struct ScanPreviewView: View {
                         if showCropView {
                             CropOverlayView(
                                 image: originalImage,
+                                detectedRectangle: detectedRectangle,
                                 corners: $corners,
                                 onDone: applyCrop
                             )
@@ -262,16 +263,18 @@ struct ScanPreviewView: View {
 
         guard let imagePath = DocumentStorage.shared.saveImage(originalImage, for: pageId) else { return }
 
-        var croppedPath: String?
-        if let cropped = croppedImage {
-            let croppedId = UUID()
-            croppedPath = DocumentStorage.shared.saveImage(cropped, for: croppedId)
+        // Save the processed/filtered image (displayImage) for PDF generation
+        // This includes both cropping and filter adjustments
+        var processedPath: String?
+        if let processed = displayImage {
+            let processedId = UUID()
+            processedPath = DocumentStorage.shared.saveImage(processed, for: processedId)
         }
 
         let page = ScannedPage(
             id: pageId,
             originalImagePath: imagePath,
-            croppedImagePath: croppedPath,
+            croppedImagePath: processedPath, // This now contains the filtered image
             corners: corners.isEmpty ? nil : corners,
             filterMode: filterMode,
             adjustments: adjustments
@@ -416,6 +419,7 @@ struct AdjustSlider: View {
 
 struct CropOverlayView: View {
     let image: UIImage
+    let detectedRectangle: VNRectangleObservation?
     @Binding var corners: [CGPoint]
     let onDone: () -> Void
 
@@ -502,14 +506,32 @@ struct CropOverlayView: View {
 
         hasInitializedCorners = true
 
-        // Default to image bounds with padding
-        let padding: CGFloat = 30
-        corners = [
-            CGPoint(x: imageFrame.minX + padding, y: imageFrame.minY + padding),
-            CGPoint(x: imageFrame.maxX - padding, y: imageFrame.minY + padding),
-            CGPoint(x: imageFrame.maxX - padding, y: imageFrame.maxY - padding),
-            CGPoint(x: imageFrame.minX + padding, y: imageFrame.maxY - padding)
-        ]
+        let imageSize = image.size
+
+        // If we have a detected rectangle, use its corners (with margin applied)
+        if let rect = detectedRectangle {
+            let imageCorners = ImageProcessor.shared.getCornersFromRectangle(rect, imageSize: imageSize)
+
+            // Convert from image coordinates to view coordinates
+            let scaleX = imageFrame.width / imageSize.width
+            let scaleY = imageFrame.height / imageSize.height
+
+            corners = imageCorners.map { corner in
+                CGPoint(
+                    x: imageFrame.origin.x + corner.x * scaleX,
+                    y: imageFrame.origin.y + corner.y * scaleY
+                )
+            }
+        } else {
+            // Fallback to image bounds with padding
+            let padding: CGFloat = 30
+            corners = [
+                CGPoint(x: imageFrame.minX + padding, y: imageFrame.minY + padding),
+                CGPoint(x: imageFrame.maxX - padding, y: imageFrame.minY + padding),
+                CGPoint(x: imageFrame.maxX - padding, y: imageFrame.maxY - padding),
+                CGPoint(x: imageFrame.minX + padding, y: imageFrame.maxY - padding)
+            ]
+        }
     }
 
     /// Convert corners from view coordinates to image coordinates
