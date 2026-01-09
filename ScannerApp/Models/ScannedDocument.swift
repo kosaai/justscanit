@@ -2,7 +2,7 @@ import UIKit
 
 // MARK: - Filter Mode
 
-enum FilterMode: String, CaseIterable, Codable {
+enum FilterMode: String, CaseIterable, Codable, Equatable {
     case original = "Original"
     case autoColor = "Auto"
     case grayscale = "Grayscale"
@@ -20,7 +20,7 @@ struct ImageAdjustments: Codable, Equatable {
 
 // MARK: - Scanned Page
 
-struct ScannedPage: Identifiable, Codable {
+struct ScannedPage: Identifiable, Codable, Equatable {
     let id: UUID
     let originalImagePath: String
     var croppedImagePath: String?

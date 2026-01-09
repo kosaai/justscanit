@@ -32,10 +32,60 @@ struct DocumentDetailView: View {
     @State private var editedName: String = ""
     @State private var shareableContent: ShareableContent?
     @State private var isGeneratingShare = false
+    @State private var showReorderView = false
 
     @FocusState private var isNameFieldFocused: Bool
 
     var body: some View {
+        ZStack {
+            // Main detail view
+            if !showReorderView {
+                detailContent
+                    .transition(.opacity)
+            }
+
+            // Reorder view
+            if showReorderView {
+                ReorderPagesView(
+                    pages: document.pages,
+                    onDone: { reorderedPages in
+                        document.pages = reorderedPages
+                        document.modifiedAt = Date()
+                        DocumentStorage.shared.updateDocument(document)
+                        // Ensure current page index is valid
+                        if currentPageIndex >= document.pages.count {
+                            currentPageIndex = max(0, document.pages.count - 1)
+                        }
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            showReorderView = false
+                        }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            showReorderView = false
+                        }
+                    },
+                    onDeletePage: { pageId in
+                        deletePage(id: pageId)
+                    }
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: showReorderView)
+        .sheet(item: $shareableContent, onDismiss: {
+            shareableContent?.cleanup?()
+        }) { content in
+            ActivityViewControllerRepresentable(items: content.items)
+        }
+        .onAppear {
+            editedName = document.name
+        }
+    }
+
+    // MARK: - Detail Content
+
+    private var detailContent: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
@@ -54,7 +104,6 @@ struct DocumentDetailView: View {
                 bottomControls
             }
 
-            // Loading overlay while generating PDF
             if isGeneratingShare {
                 Color.black.opacity(0.5)
                     .ignoresSafeArea()
@@ -62,15 +111,6 @@ struct DocumentDetailView: View {
                     .tint(.white)
                     .scaleEffect(1.5)
             }
-        }
-        .sheet(item: $shareableContent, onDismiss: {
-            // Clean up temporary files when sheet is dismissed
-            shareableContent?.cleanup?()
-        }) { content in
-            ActivityViewControllerRepresentable(items: content.items)
-        }
-        .onAppear {
-            editedName = document.name
         }
     }
 
@@ -97,12 +137,15 @@ struct DocumentDetailView: View {
             Spacer()
 
             Button(action: {
-                // TODO: Implement reorder
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showReorderView = true
+                }
             }) {
                 Text("Reorder")
                     .font(.system(size: 17))
                     .foregroundColor(.white)
             }
+            .disabled(document.pages.count < 2)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -186,6 +229,35 @@ struct DocumentDetailView: View {
         if !editedName.isEmpty {
             document.name = editedName
             DocumentStorage.shared.updateDocument(document)
+        }
+    }
+
+    private func deletePage(id: UUID) {
+        guard let index = document.pages.firstIndex(where: { $0.id == id }) else { return }
+
+        let page = document.pages[index]
+
+        // Delete image files
+        DocumentStorage.shared.deleteImage(filename: page.originalImagePath)
+        if let cropped = page.croppedImagePath {
+            DocumentStorage.shared.deleteImage(filename: cropped)
+        }
+
+        // Remove from document
+        document.pages.remove(at: index)
+        document.modifiedAt = Date()
+
+        // Update storage
+        if document.pages.isEmpty {
+            // If no pages left, go back
+            DocumentStorage.shared.deleteDocument(document)
+            onDismiss()
+        } else {
+            DocumentStorage.shared.updateDocument(document)
+            // Adjust current page index if needed
+            if currentPageIndex >= document.pages.count {
+                currentPageIndex = document.pages.count - 1
+            }
         }
     }
 

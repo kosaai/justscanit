@@ -23,6 +23,7 @@
 		0014 /* ScannerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1015 /* ScannerSettings.swift */; };
 		0015 /* SettingsSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1016 /* SettingsSheetView.swift */; };
 		0016 /* DocumentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1017 /* DocumentDetailView.swift */; };
+		0017 /* ReorderPagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1018 /* ReorderPagesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		1015 /* ScannerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerSettings.swift; sourceTree = "<group>"; };
 		1016 /* SettingsSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSheetView.swift; sourceTree = "<group>"; };
 		1017 /* DocumentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentDetailView.swift; sourceTree = "<group>"; };
+		1018 /* ReorderPagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReorderPagesView.swift; sourceTree = "<group>"; };
 		2001 /* ScannerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ScannerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -105,6 +107,7 @@
 				1013 /* HomeView.swift */,
 				1016 /* SettingsSheetView.swift */,
 				1017 /* DocumentDetailView.swift */,
+				1018 /* ReorderPagesView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -205,6 +208,7 @@
 				0014 /* ScannerSettings.swift in Sources */,
 				0015 /* SettingsSheetView.swift in Sources */,
 				0016 /* DocumentDetailView.swift in Sources */,
+				0017 /* ReorderPagesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
