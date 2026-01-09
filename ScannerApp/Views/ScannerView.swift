@@ -103,22 +103,23 @@ struct ScannerView: View {
                             }
 
                             // Bottom: Action buttons
-                            HStack {
-                                // Settings button
-                                Button {
-                                    showSettings = true
-                                } label: {
-                                    Image(systemName: "gearshape.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.black.opacity(0.5))
-                                        .clipShape(Circle())
+                            ZStack {
+                                // Left side: Settings button
+                                HStack {
+                                    Button {
+                                        showSettings = true
+                                    } label: {
+                                        Image(systemName: "gearshape.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.black.opacity(0.5))
+                                            .clipShape(Circle())
+                                    }
+                                    Spacer()
                                 }
 
-                                Spacer()
-
-                                // Manual capture button (only in manual mode)
+                                // Center: Manual capture button (only in manual mode)
                                 if settings.captureModeValue == .manual {
                                     Button(action: manualCapture) {
                                         ZStack {
@@ -133,29 +134,32 @@ struct ScannerView: View {
                                     .disabled(cameraManager.isCapturing)
                                 }
 
-                                Spacer()
+                                // Right side: Trash and checkmark buttons
+                                HStack {
+                                    Spacer()
 
-                                if !scannedPages.isEmpty {
-                                    Button(action: deleteLastPage) {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(.white)
-                                            .frame(width: 44, height: 44)
-                                            .background(Color.black.opacity(0.5))
-                                            .clipShape(Circle())
+                                    if !scannedPages.isEmpty {
+                                        Button(action: deleteLastPage) {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 20))
+                                                .foregroundColor(.white)
+                                                .frame(width: 44, height: 44)
+                                                .background(Color.black.opacity(0.5))
+                                                .clipShape(Circle())
+                                        }
                                     }
-                                }
 
-                                Button(action: finishScanning) {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 20, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .frame(width: 52, height: 52)
-                                        .background(
-                                            Circle().fill(scannedPages.isEmpty ? Color.gray : Color.blue)
-                                        )
+                                    Button(action: finishScanning) {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 20, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .frame(width: 52, height: 52)
+                                            .background(
+                                                Circle().fill(scannedPages.isEmpty ? Color.gray : Color.blue)
+                                            )
+                                    }
+                                    .disabled(scannedPages.isEmpty)
                                 }
-                                .disabled(scannedPages.isEmpty)
                             }
                             .padding(.horizontal, 16)
                             .padding(.bottom, 12)
