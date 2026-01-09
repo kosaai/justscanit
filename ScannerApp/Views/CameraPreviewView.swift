@@ -32,7 +32,7 @@ class CameraPreviewUIView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        previewLayer.videoGravity = .resizeAspect
+        previewLayer.videoGravity = .resizeAspectFill
     }
 
     required init?(coder: NSCoder) {

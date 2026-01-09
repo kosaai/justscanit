@@ -5,7 +5,7 @@ import UIKit
 enum AppScreen {
     case home
     case scanner
-    case preview
+    case documentPreview
 }
 
 struct ContentView: View {
@@ -13,8 +13,7 @@ struct ContentView: View {
     @State private var capturedImage: UIImage?
     @State private var detectedRectangle: VNRectangleObservation?
     @State private var currentDocument: ScannedDocument?
-    @State private var showShareSheet = false
-    @State private var shareURL: URL?
+    @State private var shareItem: ShareItem?
 
     var body: some View {
         ZStack {
@@ -27,61 +26,34 @@ struct ContentView: View {
                 ScannerView(
                     capturedImage: $capturedImage,
                     detectedRectangle: $detectedRectangle,
-                    onCapture: {
-                        if capturedImage != nil {
-                            currentScreen = .preview
-                        }
-                    },
+                    currentDocument: $currentDocument,
+                    onCapture: {},
                     onDismiss: {
-                        // Save current document if has pages
-                        saveCurrentDocumentIfNeeded()
+                        // Discard current session
+                        discardCurrentDocument()
+                        currentScreen = .home
+                    },
+                    onFinish: {
+                        // Scanner finished - show share sheet for the saved document
+                        if let doc = DocumentStorage.shared.documents.first,
+                           let pdfPath = doc.pdfPath {
+                            let url = DocumentStorage.shared.getPDFURL(filename: pdfPath)
+                            shareItem = ShareItem(url: url)
+                        }
+                        currentDocument = nil
                         currentScreen = .home
                     }
                 )
                 .transition(.opacity)
 
-            case .preview:
-                if let image = capturedImage {
-                    ScanPreviewView(
-                        originalImage: image,
-                        detectedRectangle: detectedRectangle,
-                        currentDocument: $currentDocument,
-                        onKeepScanning: {
-                            // Reset for next capture
-                            capturedImage = nil
-                            detectedRectangle = nil
-                            currentScreen = .scanner
-                        },
-                        onSavePDF: { document in
-                            // Save document and show share
-                            DocumentStorage.shared.addDocument(document)
-                            currentDocument = nil
-                            capturedImage = nil
-                            detectedRectangle = nil
-
-                            // Share the PDF
-                            if let pdfPath = document.pdfPath {
-                                shareURL = DocumentStorage.shared.getPDFURL(filename: pdfPath)
-                                showShareSheet = true
-                            }
-
-                            currentScreen = .home
-                        },
-                        onDiscard: {
-                            capturedImage = nil
-                            detectedRectangle = nil
-                            currentScreen = .scanner
-                        }
-                    )
-                    .transition(.opacity)
-                }
+            case .documentPreview:
+                // Future: Document preview/edit screen
+                EmptyView()
             }
         }
         .animation(.easeInOut(duration: 0.2), value: currentScreen)
-        .sheet(isPresented: $showShareSheet) {
-            if let url = shareURL {
-                ShareSheetView(items: [url])
-            }
+        .sheet(item: $shareItem) { item in
+            ShareSheetView(items: [item.url])
         }
         .onAppear {
             // Start with scanner on first launch
@@ -98,33 +70,18 @@ struct ContentView: View {
         currentScreen = .scanner
     }
 
-    private func saveCurrentDocumentIfNeeded() {
-        guard let document = currentDocument, !document.pages.isEmpty else { return }
+    private func discardCurrentDocument() {
+        guard let document = currentDocument else { return }
 
-        // Generate PDF if has pages
-        DispatchQueue.global(qos: .userInitiated).async {
-            autoreleasepool {
-                let images = document.pages.compactMap { page -> UIImage? in
-                    autoreleasepool {
-                        if let cropped = page.croppedImagePath {
-                            return DocumentStorage.shared.loadImage(filename: cropped)
-                        }
-                        return DocumentStorage.shared.loadImage(filename: page.originalImagePath)
-                    }
-                }
-
-                var finalDocument = document
-                if let pdfData = PDFGenerator.shared.generatePDF(from: images),
-                   let pdfPath = DocumentStorage.shared.savePDF(pdfData, for: document.id) {
-                    finalDocument.pdfPath = pdfPath
-                }
-
-                DispatchQueue.main.async {
-                    DocumentStorage.shared.addDocument(finalDocument)
-                    self.currentDocument = nil
-                }
+        // Delete any saved files for this session
+        for page in document.pages {
+            DocumentStorage.shared.deleteImage(filename: page.originalImagePath)
+            if let cropped = page.croppedImagePath {
+                DocumentStorage.shared.deleteImage(filename: cropped)
             }
         }
+
+        currentDocument = nil
     }
 }
 

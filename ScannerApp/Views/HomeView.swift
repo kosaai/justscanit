@@ -1,14 +1,19 @@
 import SwiftUI
 import UIKit
 
+// Wrapper to make URL identifiable for sheet presentation
+struct ShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 struct HomeView: View {
     @ObservedObject var storage = DocumentStorage.shared
     let onStartScanning: () -> Void
 
     @State private var showDeleteConfirm = false
     @State private var documentToDelete: ScannedDocument?
-    @State private var showShareSheet = false
-    @State private var shareURL: URL?
+    @State private var shareItem: ShareItem?
 
     var body: some View {
         NavigationView {
@@ -79,10 +84,8 @@ struct HomeView: View {
             } message: {
                 Text("This will permanently delete the document and all its pages.")
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = shareURL {
-                    ShareSheetView(items: [url])
-                }
+            .sheet(item: $shareItem) { item in
+                ShareSheetView(items: [item.url])
             }
         }
     }
@@ -94,8 +97,8 @@ struct HomeView: View {
             return
         }
 
-        shareURL = DocumentStorage.shared.getPDFURL(filename: pdfPath)
-        showShareSheet = true
+        let url = DocumentStorage.shared.getPDFURL(filename: pdfPath)
+        shareItem = ShareItem(url: url)
     }
 
     private func regeneratePDF(for document: ScannedDocument) {
@@ -117,8 +120,8 @@ struct HomeView: View {
                     DocumentStorage.shared.updateDocument(updatedDoc)
 
                     DispatchQueue.main.async {
-                        self.shareURL = DocumentStorage.shared.getPDFURL(filename: pdfPath)
-                        self.showShareSheet = true
+                        let url = DocumentStorage.shared.getPDFURL(filename: pdfPath)
+                        self.shareItem = ShareItem(url: url)
                     }
                 }
             }
