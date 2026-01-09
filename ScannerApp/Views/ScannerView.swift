@@ -12,7 +12,6 @@ struct ScannerView: View {
     let onDismiss: () -> Void
     let onFinish: () -> Void
 
-    @State private var showCaptureAnimation = false
     @State private var scannedPages: [ScannedPageThumbnail] = []
     @State private var isHoldingSteady = false
     @State private var steadyTimer: Timer?
@@ -73,12 +72,6 @@ struct ScannerView: View {
                             )
                         }
 
-                        // Capture flash
-                        if showCaptureAnimation {
-                            Color.white
-                                .transition(.opacity)
-                        }
-
                         // Capture preview animation
                         if let animData = captureAnimationData, showCapturePreview {
                             CapturePreviewAnimation(
@@ -90,20 +83,20 @@ struct ScannerView: View {
 
                         // UI Overlay
                         VStack {
-                            // Top: Close button
+                            // Top: Close button (below safe area to avoid system UI)
                             HStack {
                                 Button(action: onDismiss) {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 16, weight: .bold))
                                         .foregroundColor(.white)
-                                        .frame(width: 32, height: 32)
+                                        .frame(width: 36, height: 36)
                                         .background(Color.black.opacity(0.5))
                                         .clipShape(Circle())
                                 }
                                 Spacer()
                             }
                             .padding(.leading, 16)
-                            .padding(.top, geometry.safeAreaInsets.top + 8)
+                            .padding(.top, geometry.safeAreaInsets.top + 16)
 
                             Spacer()
 
@@ -327,16 +320,6 @@ struct ScannerView: View {
         // Store the detected rectangle for animation
         let detectedRect = cameraManager.detectedRectangle
 
-        withAnimation(.easeInOut(duration: 0.1)) {
-            showCaptureAnimation = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation {
-                showCaptureAnimation = false
-            }
-        }
-
         // Prepare animation data with detected corners (view coordinates)
         if let rect = detectedRect {
             let viewCorners = convertRectangleToViewCorners(rect)
@@ -411,6 +394,12 @@ struct ScannerView: View {
 
         // IMMEDIATELY start animation with raw image
         captureAnimationData?.rawImage = image
+
+        // Quick crop for animation (on main thread - fast operation)
+        if let corners = captureAnimationData?.normalizedCorners {
+            captureAnimationData?.croppedRawImage = quickCropToDocument(image, corners: corners)
+        }
+
         startCaptureAnimationPhase1()
 
         // Process in background
@@ -461,21 +450,28 @@ struct ScannerView: View {
     }
 
     private func startCaptureAnimationPhase1() {
-        // Phase 1: Show raw image clipped to document shape, small size
+        // Phase 1: Show cropped raw image at detected position
         capturePreviewPhase = .initial
         showCapturePreview = true
+
+        // Phase 2: After brief moment, start growing animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            withAnimation(.easeOut(duration: 0.4)) {
+                self.capturePreviewPhase = .growing
+            }
+        }
     }
 
     private func continueAnimationWithProcessedImage(_ processedImage: UIImage, pageId: UUID) {
         // Update with processed image
         captureAnimationData?.processedImage = processedImage
 
-        // Phase 2: Animate to larger centered rectangle with processed image
-        withAnimation(.easeInOut(duration: 0.35)) {
-            self.capturePreviewPhase = .transformed
+        // Phase 3: Crossfade to enhanced image
+        withAnimation(.easeInOut(duration: 0.3)) {
+            self.capturePreviewPhase = .enhanced
         }
 
-        // Phase 3: Fade out
+        // Phase 4: Fade out
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             withAnimation(.easeOut(duration: 0.25)) {
                 self.capturePreviewPhase = .fadeOut
@@ -492,7 +488,7 @@ struct ScannerView: View {
             }
         }
 
-        // Phase 4: Clean up (with extra delay before re-enabling detection)
+        // Phase 5: Clean up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
             self.showCapturePreview = false
             self.captureAnimationData = nil
@@ -503,6 +499,41 @@ struct ScannerView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
             self.isAnimatingCapture = false
         }
+    }
+
+    // Quick crop for animation - just bounding box, no perspective correction
+    private func quickCropToDocument(_ image: UIImage, corners: [CGPoint]) -> UIImage? {
+        guard corners.count == 4 else { return image }
+
+        let imageSize = image.size
+
+        // Convert normalized Vision coordinates to image coordinates
+        let imageCorners = corners.map { point in
+            CGPoint(
+                x: point.x * imageSize.width,
+                y: (1 - point.y) * imageSize.height
+            )
+        }
+
+        // Calculate bounding rect
+        let minX = imageCorners.map { $0.x }.min() ?? 0
+        let minY = imageCorners.map { $0.y }.min() ?? 0
+        let maxX = imageCorners.map { $0.x }.max() ?? imageSize.width
+        let maxY = imageCorners.map { $0.y }.max() ?? imageSize.height
+
+        let cropRect = CGRect(
+            x: max(0, minX),
+            y: max(0, minY),
+            width: min(imageSize.width - minX, maxX - minX),
+            height: min(imageSize.height - minY, maxY - minY)
+        )
+
+        guard let cgImage = image.cgImage,
+              let croppedCGImage = cgImage.cropping(to: cropRect) else {
+            return image
+        }
+
+        return UIImage(cgImage: croppedCGImage, scale: image.scale, orientation: image.imageOrientation)
     }
 
     // MARK: - Actions
@@ -689,8 +720,9 @@ struct ScannedPageThumbnail: Identifiable {
 // MARK: - Capture Animation Types
 
 enum CapturePreviewPhase {
-    case initial      // Show raw image clipped to document shape, small
-    case transformed  // Animate to larger centered rectangle with processed image
+    case initial      // Show cropped raw image, medium size at detected position
+    case growing      // Animate to full size, still showing raw image
+    case enhanced     // Crossfade to processed image
     case fadeOut      // Fade out
 }
 
@@ -698,6 +730,7 @@ struct CaptureAnimationData {
     var viewCorners: [CGPoint]  // Corners in view coordinates (topLeft, topRight, bottomRight, bottomLeft)
     var normalizedCorners: [CGPoint]?  // Corners in normalized image coordinates for clipping
     var rawImage: UIImage?
+    var croppedRawImage: UIImage?  // Cached cropped version
     var processedImage: UIImage?
 }
 
@@ -718,26 +751,32 @@ struct CapturePreviewAnimation: View {
         return CGPoint(x: centerX, y: centerY)
     }
 
-    // Initial size (small, at detected position)
+    // Initial size (medium, 2x original)
     private var initialSize: CGSize {
-        CGSize(width: 120, height: 160)
+        CGSize(width: 240, height: 320)
     }
 
-    // Target size (larger, centered)
+    // Target size (90% of camera view)
     private var targetSize: CGSize {
-        CGSize(width: 220, height: 300)
+        let maxWidth = viewSize.width * 0.92
+        let maxHeight = viewSize.height * 0.92
+        // Maintain document aspect ratio (roughly 1:1.4)
+        let aspectRatio: CGFloat = 1.4
+        let width = min(maxWidth, maxHeight / aspectRatio)
+        let height = width * aspectRatio
+        return CGSize(width: width, height: height)
     }
 
-    // Target center (centered in view, slightly up)
+    // Target center (centered in view)
     private var targetCenter: CGPoint {
-        CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 30)
+        CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
     }
 
     private var currentSize: CGSize {
         switch phase {
         case .initial:
             return initialSize
-        case .transformed, .fadeOut:
+        case .growing, .enhanced, .fadeOut:
             return targetSize
         }
     }
@@ -746,27 +785,34 @@ struct CapturePreviewAnimation: View {
         switch phase {
         case .initial:
             return detectedCenter
-        case .transformed, .fadeOut:
+        case .growing, .enhanced, .fadeOut:
             return targetCenter
         }
     }
 
-    private var currentImage: UIImage? {
+    // Raw image (cropped to document)
+    private var rawCroppedImage: UIImage? {
+        if let cached = data.croppedRawImage {
+            return cached
+        }
+        if let raw = data.rawImage, let corners = data.normalizedCorners {
+            return cropToQuadrilateral(raw, corners: corners)
+        }
+        return data.rawImage
+    }
+
+    private var showProcessedImage: Bool {
         switch phase {
-        case .initial:
-            // Show cropped raw image (clipped to document)
-            if let raw = data.rawImage, let corners = data.normalizedCorners {
-                return cropToQuadrilateral(raw, corners: corners)
-            }
-            return data.rawImage
-        case .transformed, .fadeOut:
-            return data.processedImage ?? data.rawImage
+        case .initial, .growing:
+            return false
+        case .enhanced, .fadeOut:
+            return true
         }
     }
 
     private var opacity: Double {
         switch phase {
-        case .initial, .transformed:
+        case .initial, .growing, .enhanced:
             return 1.0
         case .fadeOut:
             return 0.0
@@ -774,16 +820,29 @@ struct CapturePreviewAnimation: View {
     }
 
     var body: some View {
-        if let image = currentImage {
-            Image(uiImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: currentSize.width, height: currentSize.height)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .shadow(color: .black.opacity(0.5), radius: 12, x: 0, y: 6)
-                .position(currentCenter)
-                .opacity(opacity)
+        ZStack {
+            // Raw cropped image (grows, then fades out)
+            if let rawImage = rawCroppedImage {
+                Image(uiImage: rawImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: currentSize.width, height: currentSize.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .opacity(showProcessedImage ? 0 : 1)
+            }
+
+            // Processed image (fades in on top)
+            if showProcessedImage, let processed = data.processedImage {
+                Image(uiImage: processed)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: currentSize.width, height: currentSize.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
         }
+        .shadow(color: .black.opacity(0.5), radius: 15, x: 0, y: 8)
+        .position(currentCenter)
+        .opacity(opacity)
     }
 
     // Crop image to quadrilateral defined by normalized corners
