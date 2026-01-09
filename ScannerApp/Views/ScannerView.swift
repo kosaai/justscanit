@@ -645,6 +645,8 @@ struct ThumbnailStrip: View {
     let stripHeight: CGFloat
     let onDelete: (UUID) -> Void
 
+    @State private var isAnyThumbnailDragging = false
+
     private let horizontalPadding: CGFloat = 8
     private let spacing: CGFloat = 4
 
@@ -687,7 +689,8 @@ struct ThumbnailStrip: View {
                                     page: page,
                                     width: thumbnailWidth,
                                     height: thumbnailHeight,
-                                    onDelete: { onDelete(page.id) }
+                                    onDelete: { onDelete(page.id) },
+                                    isAnyThumbnailDragging: $isAnyThumbnailDragging
                                 )
                                 .id(page.id)
                                 .transition(.asymmetric(
@@ -707,7 +710,7 @@ struct ThumbnailStrip: View {
                         }
                     }
                 }
-                .modifier(ScrollDisabledModifier(isDisabled: !needsScroll))
+                .modifier(ScrollDisabledModifier(isDisabled: !needsScroll || isAnyThumbnailDragging))
                 .modifier(ScrollClipDisabledModifier())
             }
         }
@@ -741,6 +744,7 @@ struct SwipableThumbnail: View {
     let width: CGFloat
     let height: CGFloat
     let onDelete: () -> Void
+    @Binding var isAnyThumbnailDragging: Bool
 
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
@@ -812,6 +816,7 @@ struct SwipableThumbnail: View {
                             // Only handle vertical (upward) swipes
                             if isVerticalGesture && value.translation.height < 0 {
                                 isDragging = true
+                                isAnyThumbnailDragging = true
                                 dragOffset = value.translation.height * 0.8
                             }
                         }
@@ -823,6 +828,7 @@ struct SwipableThumbnail: View {
                                 }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                     onDelete()
+                                    isAnyThumbnailDragging = false
                                 }
                             } else {
                                 // Snap back
@@ -830,6 +836,7 @@ struct SwipableThumbnail: View {
                                     dragOffset = 0
                                     isDragging = false
                                 }
+                                isAnyThumbnailDragging = false
                             }
                             // Reset for next gesture
                             gestureDecided = false
