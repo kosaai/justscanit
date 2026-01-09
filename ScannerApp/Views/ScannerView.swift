@@ -738,6 +738,8 @@ struct SwipableThumbnail: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
+    @State private var gestureDecided = false  // Whether we've committed to vertical or horizontal
+    @State private var isVerticalGesture = false  // True = vertical delete, False = let scroll handle it
 
     // Threshold: 1/3 of thumbnail height
     private var deleteThreshold: CGFloat {
@@ -783,19 +785,32 @@ struct SwipableThumbnail: View {
                 .offset(y: dragOffset)
                 .opacity(isDragging ? (shouldDelete ? 0.7 : 0.9) : 1.0)
                 .scaleEffect(isDragging ? 0.95 : 1.0)
-                .gesture(
-                    DragGesture()
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10)
                         .onChanged { value in
-                            // Only allow upward swipes
-                            let translation = value.translation.height
-                            if translation < 0 {
+                            // Decide gesture direction on first significant movement
+                            if !gestureDecided {
+                                let horizontal = abs(value.translation.width)
+                                let vertical = abs(value.translation.height)
+                                // Need clear vertical intent (upward) to trigger delete
+                                if vertical > horizontal && value.translation.height < 0 {
+                                    isVerticalGesture = true
+                                    gestureDecided = true
+                                } else if horizontal > vertical {
+                                    // Horizontal - let ScrollView handle it
+                                    isVerticalGesture = false
+                                    gestureDecided = true
+                                }
+                            }
+
+                            // Only handle vertical (upward) swipes
+                            if isVerticalGesture && value.translation.height < 0 {
                                 isDragging = true
-                                // Apply resistance as user drags further
-                                dragOffset = translation * 0.8
+                                dragOffset = value.translation.height * 0.8
                             }
                         }
                         .onEnded { value in
-                            if shouldDelete {
+                            if isVerticalGesture && shouldDelete {
                                 // Animate off screen then delete
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     dragOffset = -200
@@ -810,6 +825,9 @@ struct SwipableThumbnail: View {
                                     isDragging = false
                                 }
                             }
+                            // Reset for next gesture
+                            gestureDecided = false
+                            isVerticalGesture = false
                         }
                 )
         }
