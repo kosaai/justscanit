@@ -21,6 +21,12 @@ struct ScannerView: View {
     @State private var cameraViewSize: CGSize = .zero
     @State private var captureMode: CaptureMode = .auto
 
+    // Capture animation state
+    @State private var captureAnimationData: CaptureAnimationData?
+    @State private var showCapturePreview = false
+    @State private var capturePreviewPhase: CapturePreviewPhase = .initial
+    @State private var isAnimatingCapture = false  // Prevents new captures during animation
+
     private let steadyDuration: TimeInterval = 1.0
 
     private var lightIconName: String {
@@ -71,6 +77,15 @@ struct ScannerView: View {
                         if showCaptureAnimation {
                             Color.white
                                 .transition(.opacity)
+                        }
+
+                        // Capture preview animation
+                        if let animData = captureAnimationData, showCapturePreview {
+                            CapturePreviewAnimation(
+                                data: animData,
+                                phase: capturePreviewPhase,
+                                viewSize: cameraViewSize
+                            )
                         }
 
                         // UI Overlay
@@ -242,6 +257,9 @@ struct ScannerView: View {
         // Only handle auto-capture in auto mode
         guard captureMode == .auto else { return }
 
+        // Don't process during capture animation
+        guard !isAnimatingCapture else { return }
+
         guard let rect = newRect else {
             resetSteadyState()
             return
@@ -258,6 +276,7 @@ struct ScannerView: View {
     }
 
     private func manualCapture() {
+        guard !isAnimatingCapture else { return }
         capturePhoto()
     }
 
@@ -299,6 +318,12 @@ struct ScannerView: View {
     }
 
     private func capturePhoto() {
+        // Don't capture during animation
+        guard !isAnimatingCapture else { return }
+
+        // Store the detected rectangle for animation
+        let detectedRect = cameraManager.detectedRectangle
+
         withAnimation(.easeInOut(duration: 0.1)) {
             showCaptureAnimation = true
         }
@@ -309,8 +334,55 @@ struct ScannerView: View {
             }
         }
 
+        // Prepare animation data with detected corners
+        if let rect = detectedRect {
+            let corners = convertRectangleToViewCorners(rect)
+            captureAnimationData = CaptureAnimationData(
+                corners: corners,
+                rawImage: nil,
+                processedImage: nil
+            )
+        }
+
         cameraManager.capturePhoto()
         resetSteadyState()
+    }
+
+    private func convertRectangleToViewCorners(_ rect: VNRectangleObservation) -> [CGPoint] {
+        // Convert Vision coordinates to view coordinates
+        let cameraAspect: CGFloat = 3.0 / 4.0
+        let viewAspect = cameraViewSize.width / cameraViewSize.height
+
+        var scaleX: CGFloat = 1.0
+        var scaleY: CGFloat = 1.0
+        var offsetX: CGFloat = 0.0
+        var offsetY: CGFloat = 0.0
+
+        if viewAspect < cameraAspect {
+            let visibleWidthRatio = viewAspect / cameraAspect
+            offsetX = (1.0 - visibleWidthRatio) / 2.0
+            scaleX = visibleWidthRatio
+        } else {
+            let visibleHeightRatio = cameraAspect / viewAspect
+            offsetY = (1.0 - visibleHeightRatio) / 2.0
+            scaleY = visibleHeightRatio
+        }
+
+        func transform(_ point: CGPoint) -> CGPoint {
+            let adjustedX = (point.x - offsetX) / scaleX
+            let adjustedY = (point.y - offsetY) / scaleY
+            return CGPoint(
+                x: adjustedX * cameraViewSize.width,
+                y: (1 - adjustedY) * cameraViewSize.height
+            )
+        }
+
+        return [
+            transform(rect.topLeft),
+            transform(rect.topRight),
+            transform(rect.bottomRight),
+            transform(rect.bottomLeft)
+        ]
     }
 
     private func handleCapturedImage(_ image: UIImage) {
@@ -346,23 +418,87 @@ struct ScannerView: View {
                     adjustments: .default
                 )
 
+                // Create thumbnail for animation
+                let thumbnailImage = filteredImage
+
                 DispatchQueue.main.async {
                     if self.currentDocument == nil {
                         self.currentDocument = ScannedDocument()
                     }
                     self.currentDocument?.addPage(page)
 
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        self.scannedPages.append(ScannedPageThumbnail(
-                            id: pageId,
-                            image: filteredImage
-                        ))
-                    }
+                    // Start capture animation sequence
+                    self.startCaptureAnimation(
+                        rawImage: image,
+                        processedImage: thumbnailImage,
+                        pageId: pageId
+                    )
 
                     self.cameraManager.capturedImage = nil
                     self.lastStableRectangle = nil
                 }
             }
+        }
+    }
+
+    private func startCaptureAnimation(rawImage: UIImage, processedImage: UIImage, pageId: UUID) {
+        // Block new captures during animation
+        isAnimatingCapture = true
+
+        // Update animation data with images
+        if captureAnimationData != nil {
+            captureAnimationData?.rawImage = rawImage
+            captureAnimationData?.processedImage = processedImage
+        } else {
+            // No corners detected, create centered animation
+            let centerX = cameraViewSize.width / 2
+            let centerY = cameraViewSize.height / 2
+            let width: CGFloat = 200
+            let height: CGFloat = 260
+            captureAnimationData = CaptureAnimationData(
+                corners: [
+                    CGPoint(x: centerX - width/2, y: centerY - height/2),
+                    CGPoint(x: centerX + width/2, y: centerY - height/2),
+                    CGPoint(x: centerX + width/2, y: centerY + height/2),
+                    CGPoint(x: centerX - width/2, y: centerY + height/2)
+                ],
+                rawImage: rawImage,
+                processedImage: processedImage
+            )
+        }
+
+        // Phase 1: Show at detected position (skewed)
+        capturePreviewPhase = .initial
+        showCapturePreview = true
+
+        // Phase 2: Animate to rectangle with processed image
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.easeInOut(duration: 0.4)) {
+                self.capturePreviewPhase = .transformed
+            }
+        }
+
+        // Phase 3: Fade out
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                self.capturePreviewPhase = .fadeOut
+            }
+
+            // Add to thumbnails as preview fades
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                self.scannedPages.append(ScannedPageThumbnail(
+                    id: pageId,
+                    image: processedImage
+                ))
+            }
+        }
+
+        // Phase 4: Clean up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            self.showCapturePreview = false
+            self.captureAnimationData = nil
+            self.capturePreviewPhase = .initial
+            self.isAnimatingCapture = false
         }
     }
 
@@ -545,4 +681,115 @@ struct ThumbnailStrip: View {
 struct ScannedPageThumbnail: Identifiable {
     let id: UUID
     let image: UIImage
+}
+
+// MARK: - Capture Animation Types
+
+enum CapturePreviewPhase {
+    case initial      // Show at detected corners (potentially skewed)
+    case transformed  // Animate to rectangle with processed image
+    case fadeOut      // Fade out
+}
+
+struct CaptureAnimationData {
+    var corners: [CGPoint]  // topLeft, topRight, bottomRight, bottomLeft
+    var rawImage: UIImage?
+    var processedImage: UIImage?
+}
+
+// MARK: - Capture Preview Animation View
+
+struct CapturePreviewAnimation: View {
+    let data: CaptureAnimationData
+    let phase: CapturePreviewPhase
+    let viewSize: CGSize
+
+    // Target rectangle (centered, smaller)
+    private var targetRect: CGRect {
+        let width: CGFloat = 180
+        let height: CGFloat = 240
+        return CGRect(
+            x: (viewSize.width - width) / 2,
+            y: (viewSize.height - height) / 2 - 40,
+            width: width,
+            height: height
+        )
+    }
+
+    // Calculate bounding rect from corners
+    private func boundingRect(from corners: [CGPoint]) -> CGRect {
+        guard corners.count == 4 else {
+            return targetRect
+        }
+        let minX = corners.map { $0.x }.min() ?? 0
+        let minY = corners.map { $0.y }.min() ?? 0
+        let maxX = corners.map { $0.x }.max() ?? 100
+        let maxY = corners.map { $0.y }.max() ?? 130
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private var initialRect: CGRect {
+        // Slightly shrunk from detected corners
+        let corners = shrinkCorners(data.corners, by: 0.92)
+        return boundingRect(from: corners)
+    }
+
+    private var currentRect: CGRect {
+        switch phase {
+        case .initial:
+            return initialRect
+        case .transformed, .fadeOut:
+            return targetRect
+        }
+    }
+
+    private var currentImage: UIImage? {
+        switch phase {
+        case .initial:
+            return data.rawImage ?? data.processedImage
+        case .transformed, .fadeOut:
+            return data.processedImage ?? data.rawImage
+        }
+    }
+
+    private var opacity: Double {
+        switch phase {
+        case .initial, .transformed:
+            return 1.0
+        case .fadeOut:
+            return 0.0
+        }
+    }
+
+    var body: some View {
+        if let image = currentImage {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: currentRect.width, height: currentRect.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 5)
+                .position(
+                    x: currentRect.midX,
+                    y: currentRect.midY
+                )
+                .opacity(opacity)
+        }
+    }
+
+    private func shrinkCorners(_ corners: [CGPoint], by scale: CGFloat) -> [CGPoint] {
+        guard corners.count == 4 else { return corners }
+
+        // Calculate centroid
+        let centerX = corners.reduce(0) { $0 + $1.x } / 4
+        let centerY = corners.reduce(0) { $0 + $1.y } / 4
+
+        // Scale corners toward center
+        return corners.map { corner in
+            CGPoint(
+                x: centerX + (corner.x - centerX) * scale,
+                y: centerY + (corner.y - centerY) * scale
+            )
+        }
+    }
 }
