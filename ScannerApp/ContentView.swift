@@ -5,7 +5,7 @@ import UIKit
 enum AppScreen {
     case home
     case scanner
-    case documentPreview
+    case documentDetail
 }
 
 struct ContentView: View {
@@ -37,21 +37,26 @@ struct ContentView: View {
                         currentScreen = .home
                     },
                     onFinish: {
-                        // Scanner finished - show share sheet for the saved document
-                        if let doc = DocumentStorage.shared.documents.first,
-                           let pdfPath = doc.pdfPath {
-                            let url = DocumentStorage.shared.getPDFURL(filename: pdfPath)
-                            shareItem = ShareItem(url: url)
-                        }
-                        currentDocument = nil
-                        currentScreen = .home
+                        // Scanner finished - go to document detail view
+                        currentScreen = .documentDetail
                     }
                 )
                 .transition(.opacity)
 
-            case .documentPreview:
-                // Future: Document preview/edit screen
-                EmptyView()
+            case .documentDetail:
+                if let doc = Binding($currentDocument) {
+                    DocumentDetailView(
+                        document: doc,
+                        onBackToScanning: {
+                            currentScreen = .scanner
+                        },
+                        onDismiss: {
+                            currentDocument = nil
+                            currentScreen = .home
+                        }
+                    )
+                    .transition(.opacity)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: currentScreen)
