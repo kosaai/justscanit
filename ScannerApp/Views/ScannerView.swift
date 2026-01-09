@@ -208,11 +208,12 @@ struct ScannerView: View {
                     .frame(height: cameraAreaHeight)
                     .clipped()
 
-                    // Thumbnail section (25%)
+                    // Thumbnail section (25%) - zIndex ensures dragged thumbnails appear above camera
                     VStack(spacing: 0) {
                         ThumbnailStrip(
                             pages: scannedPages,
-                            stripHeight: thumbnailAreaHeight - geometry.safeAreaInsets.bottom
+                            stripHeight: thumbnailAreaHeight - geometry.safeAreaInsets.bottom,
+                            onDelete: deletePage
                         )
 
                         // Bottom safe area spacer
@@ -221,6 +222,7 @@ struct ScannerView: View {
                     }
                     .frame(height: thumbnailAreaHeight)
                     .background(Color.black)
+                    .zIndex(1)
                 }
             }
         }
@@ -551,12 +553,15 @@ struct ScannerView: View {
     }
 
     private func deleteLastPage() {
-        guard !scannedPages.isEmpty else { return }
+        guard let lastPage = scannedPages.last else { return }
+        deletePage(id: lastPage.id)
+    }
 
+    private func deletePage(id: UUID) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            let removed = scannedPages.removeLast()
+            scannedPages.removeAll { $0.id == id }
 
-            if let index = currentDocument?.pages.firstIndex(where: { $0.id == removed.id }) {
+            if let index = currentDocument?.pages.firstIndex(where: { $0.id == id }) {
                 let page = currentDocument?.pages[index]
                 if let path = page?.originalImagePath {
                     DocumentStorage.shared.deleteImage(filename: path)
@@ -653,6 +658,7 @@ struct StatusBadge: View {
 struct ThumbnailStrip: View {
     let pages: [ScannedPageThumbnail]
     let stripHeight: CGFloat
+    let onDelete: (UUID) -> Void
 
     private let horizontalPadding: CGFloat = 8
     private let spacing: CGFloat = 4
@@ -682,17 +688,17 @@ struct ThumbnailStrip: View {
                 ScrollViewReader { proxy in
                     HStack(spacing: spacing) {
                         ForEach(pages) { page in
-                            Image(uiImage: page.image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: thumbnailWidth, height: thumbnailHeight)
-                                .cornerRadius(4)
-                                .clipped()
-                                .id(page.id)
-                                .transition(.asymmetric(
-                                    insertion: .scale(scale: 0.5).combined(with: .opacity),
-                                    removal: .scale(scale: 0.8).combined(with: .opacity)
-                                ))
+                            SwipableThumbnail(
+                                page: page,
+                                width: thumbnailWidth,
+                                height: thumbnailHeight,
+                                onDelete: { onDelete(page.id) }
+                            )
+                            .id(page.id)
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.5).combined(with: .opacity),
+                                removal: .scale(scale: 0.8).combined(with: .opacity)
+                            ))
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
@@ -706,7 +712,100 @@ struct ThumbnailStrip: View {
                     }
                 }
             }
+            .modifier(ScrollClipDisabledModifier())
         }
+    }
+}
+
+// Helper to disable scroll clipping on iOS 17+
+struct ScrollClipDisabledModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.scrollClipDisabled(true)
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - Swipable Thumbnail
+
+struct SwipableThumbnail: View {
+    let page: ScannedPageThumbnail
+    let width: CGFloat
+    let height: CGFloat
+    let onDelete: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
+
+    // Threshold: 1/3 of thumbnail height
+    private var deleteThreshold: CGFloat {
+        height / 3
+    }
+
+    private var shouldDelete: Bool {
+        -dragOffset > deleteThreshold
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            // Delete icon (appears when dragged past threshold)
+            if shouldDelete && isDragging {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                    )
+                    .offset(y: -52)
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            // Thumbnail image
+            Image(uiImage: page.image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: width, height: height)
+                .cornerRadius(4)
+                .clipped()
+                .offset(y: dragOffset)
+                .opacity(isDragging ? (shouldDelete ? 0.6 : 0.9) : 1.0)
+                .scaleEffect(isDragging ? 0.95 : 1.0)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            // Only allow upward swipes
+                            let translation = value.translation.height
+                            if translation < 0 {
+                                isDragging = true
+                                // Apply resistance as user drags further
+                                dragOffset = translation * 0.8
+                            }
+                        }
+                        .onEnded { value in
+                            if shouldDelete {
+                                // Animate off screen then delete
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    dragOffset = -200
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    onDelete()
+                                }
+                            } else {
+                                // Snap back
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    dragOffset = 0
+                                    isDragging = false
+                                }
+                            }
+                        }
+                )
+                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: shouldDelete)
+        }
+        .frame(width: width, height: height)
     }
 }
 
