@@ -19,8 +19,11 @@ struct ContentView: View {
         ZStack {
             switch currentScreen {
             case .home:
-                HomeView(onStartScanning: startScanning)
-                    .transition(.opacity)
+                HomeView(
+                    onStartScanning: startScanning,
+                    onOpenDocument: openExistingDocument
+                )
+                .transition(.opacity)
 
             case .scanner:
                 ScannerView(
@@ -70,14 +73,27 @@ struct ContentView: View {
         currentScreen = .scanner
     }
 
+    private func openExistingDocument(_ document: ScannedDocument) {
+        // Load existing document into scanner
+        currentDocument = document
+        capturedImage = nil
+        detectedRectangle = nil
+        currentScreen = .scanner
+    }
+
     private func discardCurrentDocument() {
         guard let document = currentDocument else { return }
 
-        // Delete any saved files for this session
-        for page in document.pages {
-            DocumentStorage.shared.deleteImage(filename: page.originalImagePath)
-            if let cropped = page.croppedImagePath {
-                DocumentStorage.shared.deleteImage(filename: cropped)
+        // Only delete files if this is a NEW document (not saved to storage yet)
+        let isExistingDocument = DocumentStorage.shared.documents.contains { $0.id == document.id }
+
+        if !isExistingDocument {
+            // Delete any saved files for this unsaved session
+            for page in document.pages {
+                DocumentStorage.shared.deleteImage(filename: page.originalImagePath)
+                if let cropped = page.croppedImagePath {
+                    DocumentStorage.shared.deleteImage(filename: cropped)
+                }
             }
         }
 

@@ -10,6 +10,7 @@ struct ShareItem: Identifiable {
 struct HomeView: View {
     @ObservedObject var storage = DocumentStorage.shared
     let onStartScanning: () -> Void
+    let onOpenDocument: (ScannedDocument) -> Void
 
     @State private var showDeleteConfirm = false
     @State private var documentToDelete: ScannedDocument?
@@ -18,6 +19,10 @@ struct HomeView: View {
     var body: some View {
         NavigationView {
             ZStack {
+                // Background
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+
                 if storage.documents.isEmpty {
                     // Empty state
                     VStack(spacing: 20) {
@@ -36,22 +41,28 @@ struct HomeView: View {
                             .padding(.horizontal, 40)
                     }
                 } else {
-                    // Document list
-                    List {
-                        Section(header: Text("All scans")) {
+                    // Document list - edge to edge
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
                             ForEach(storage.documents) { document in
-                                DocumentRow(
+                                DocumentCard(
                                     document: document,
+                                    onTap: { onOpenDocument(document) },
                                     onShare: { shareDocument(document) },
                                     onDelete: {
                                         documentToDelete = document
                                         showDeleteConfirm = true
                                     }
                                 )
+
+                                if document.id != storage.documents.last?.id {
+                                    Divider()
+                                        .padding(.leading, 16)
+                                }
                             }
                         }
+                        .padding(.bottom, 100) // Space for FAB
                     }
-                    .listStyle(.insetGrouped)
                 }
 
                 // Floating scan button
@@ -73,7 +84,7 @@ struct HomeView: View {
                     .padding(.bottom, 20)
                 }
             }
-            .navigationTitle("Scanner")
+            .navigationTitle("Scans")
             .alert("Delete Document?", isPresented: $showDeleteConfirm) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
@@ -92,7 +103,6 @@ struct HomeView: View {
 
     private func shareDocument(_ document: ScannedDocument) {
         guard let pdfPath = document.pdfPath else {
-            // Generate PDF if not exists
             regeneratePDF(for: document)
             return
         }
@@ -129,88 +139,161 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Document Row
+// MARK: - Document Card (Bigger preview like Scannable)
 
-struct DocumentRow: View {
+struct DocumentCard: View {
     let document: ScannedDocument
+    let onTap: () -> Void
     let onShare: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Thumbnail
-            if let thumbPath = document.thumbnailPath,
-               let thumbnail = DocumentStorage.shared.loadImage(filename: thumbPath) {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 50, height: 65)
-                    .cornerRadius(6)
-                    .clipped()
-            } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(.systemGray5))
-                    .frame(width: 50, height: 65)
-                    .overlay(
-                        Image(systemName: "doc")
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 16) {
+                // Large thumbnail with stacked pages effect
+                DocumentThumbnailStack(document: document)
+
+                // Info
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(document.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    Text(formatDateTime(document.modifiedAt))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 8) {
+                        if let pdfPath = document.pdfPath {
+                            Text(DocumentStorage.shared.formatFileSize(
+                                DocumentStorage.shared.getPDFSize(filename: pdfPath)
+                            ))
+                            .font(.caption)
                             .foregroundColor(.secondary)
-                    )
-            }
+                        }
 
-            // Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(document.name)
-                    .font(.headline)
-                    .lineLimit(1)
-
-                HStack(spacing: 8) {
-                    Text(formatDate(document.modifiedAt))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    if let pdfPath = document.pdfPath {
-                        Text(DocumentStorage.shared.formatFileSize(
-                            DocumentStorage.shared.getPDFSize(filename: pdfPath)
-                        ))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        Text("\(document.pageCount) page\(document.pageCount == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
+                }
 
-                    Text("\(document.pageCount) page\(document.pageCount == 1 ? "" : "s")")
-                        .font(.caption)
+                Spacer()
+
+                // Actions menu
+                Menu {
+                    Button(action: onShare) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16))
                         .foregroundColor(.secondary)
+                        .frame(width: 32, height: 32)
                 }
             }
-
-            Spacer()
-
-            // Actions menu
-            Menu {
-                Button(action: onShare) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                Button(role: .destructive, action: onDelete) {
-                    Label("Delete", systemImage: "trash")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .foregroundColor(.secondary)
-                    .padding(8)
-            }
+            .padding(16)
         }
-        .padding(.vertical, 4)
+        .buttonStyle(PlainButtonStyle())
     }
 
-    private func formatDate(_ date: Date) -> String {
+    private func formatDateTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         if Calendar.current.isDateInToday(date) {
-            formatter.dateFormat = "'Today'"
+            formatter.dateFormat = "'Today,' h:mm a"
         } else if Calendar.current.isDateInYesterday(date) {
-            formatter.dateFormat = "'Yesterday'"
+            formatter.dateFormat = "'Yesterday,' h:mm a"
         } else {
             formatter.dateFormat = "MMM d, yyyy"
         }
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Document Thumbnail Stack (shows stacked pages like Scannable)
+
+struct DocumentThumbnailStack: View {
+    let document: ScannedDocument
+
+    private let thumbnailWidth: CGFloat = 100
+    private let thumbnailHeight: CGFloat = 130
+
+    var body: some View {
+        ZStack {
+            // Show stacked effect for multi-page documents
+            if document.pageCount > 1 {
+                // Back page (offset)
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(.systemGray5))
+                    .frame(width: thumbnailWidth - 8, height: thumbnailHeight - 8)
+                    .offset(x: 6, y: 6)
+
+                if document.pageCount > 2 {
+                    // Middle page
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(.systemGray4))
+                        .frame(width: thumbnailWidth - 4, height: thumbnailHeight - 4)
+                        .offset(x: 3, y: 3)
+                }
+            }
+
+            // Front page (main thumbnail)
+            if let firstPage = document.pages.first {
+                let imagePath = firstPage.croppedImagePath ?? firstPage.originalImagePath
+                if let image = DocumentStorage.shared.loadImage(filename: imagePath) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: thumbnailWidth, height: thumbnailHeight)
+                        .cornerRadius(6)
+                        .clipped()
+                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                } else {
+                    placeholderThumbnail
+                }
+            } else {
+                placeholderThumbnail
+            }
+
+            // Page count badge
+            if document.pageCount > 1 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text("\(document.pageCount)")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Color(.systemBackground))
+                                    .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 1)
+                            )
+                    }
+                }
+                .frame(width: thumbnailWidth + 8, height: thumbnailHeight + 8)
+            }
+        }
+        .frame(width: thumbnailWidth + 10, height: thumbnailHeight + 10)
+    }
+
+    private var placeholderThumbnail: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color(.systemGray5))
+            .frame(width: thumbnailWidth, height: thumbnailHeight)
+            .overlay(
+                Image(systemName: "doc")
+                    .font(.title)
+                    .foregroundColor(.secondary)
+            )
     }
 }
 

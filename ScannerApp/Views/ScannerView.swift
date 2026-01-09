@@ -402,6 +402,9 @@ struct ScannerView: View {
     private func finishScanning() {
         guard !scannedPages.isEmpty, let document = currentDocument else { return }
 
+        // Check if this is an existing document being edited
+        let isExistingDocument = DocumentStorage.shared.documents.contains { $0.id == document.id }
+
         DispatchQueue.global(qos: .userInitiated).async {
             autoreleasepool {
                 let images = document.pages.compactMap { page -> UIImage? in
@@ -418,7 +421,11 @@ struct ScannerView: View {
                 }
 
                 DispatchQueue.main.async {
-                    DocumentStorage.shared.addDocument(finalDocument)
+                    if isExistingDocument {
+                        DocumentStorage.shared.updateDocument(finalDocument)
+                    } else {
+                        DocumentStorage.shared.addDocument(finalDocument)
+                    }
                     self.onFinish()
                 }
             }
