@@ -21,25 +21,22 @@ struct DocumentDetailView: View {
     @FocusState private var isNameFieldFocused: Bool
 
     var body: some View {
-        GeometryReader { geometry in
-            let safeTop = geometry.safeAreaInsets.top
-            let safeBottom = geometry.safeAreaInsets.bottom
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-            ZStack {
-                Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                topBar
 
-                VStack(spacing: 0) {
-                    // Top bar
-                    topBar
-                        .padding(.top, safeTop)
-
-                    // Main content - Page carousel
-                    pageCarousel(geometry: geometry, safeTop: safeTop, safeBottom: safeBottom)
-
-                    // Bottom controls
-                    bottomControls
-                        .padding(.bottom, safeBottom)
+                GeometryReader { geometry in
+                    PageCarouselView(
+                        pages: document.pages,
+                        currentPageIndex: $currentPageIndex,
+                        pageWidth: geometry.size.width - 48,
+                        spacing: 12
+                    )
                 }
+
+                bottomControls
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -54,7 +51,6 @@ struct DocumentDetailView: View {
 
     private var topBar: some View {
         HStack {
-            // Back to scanning button
             Button(action: onBackToScanning) {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
@@ -67,14 +63,12 @@ struct DocumentDetailView: View {
 
             Spacer()
 
-            // Page indicator
             Text("\(currentPageIndex + 1)/\(document.pages.count)")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundColor(.white)
 
             Spacer()
 
-            // Reorder button (placeholder)
             Button(action: {
                 // TODO: Implement reorder
             }) {
@@ -84,30 +78,13 @@ struct DocumentDetailView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Page Carousel
-
-    private func pageCarousel(geometry: GeometryProxy, safeTop: CGFloat, safeBottom: CGFloat) -> some View {
-        let screenWidth = geometry.size.width
-        let pageWidth = screenWidth - 48 // Leave 24pt on each side to show adjacent pages
-        let spacing: CGFloat = 12
-
-        return PageCarouselView(
-            pages: document.pages,
-            currentPageIndex: $currentPageIndex,
-            pageWidth: pageWidth,
-            spacing: spacing
-        )
-        .frame(maxHeight: .infinity)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Bottom Controls
 
     private var bottomControls: some View {
-        VStack(spacing: 16) {
-            // Document name row
+        VStack(spacing: 12) {
             HStack {
                 if isEditingName {
                     TextField("Document name", text: $editedName)
@@ -129,7 +106,6 @@ struct DocumentDetailView: View {
 
                 Spacer()
 
-                // Export type toggle
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         exportType = exportType == .pdf ? .images : .pdf
@@ -150,7 +126,6 @@ struct DocumentDetailView: View {
             }
             .padding(.horizontal, 20)
 
-            // Share button
             Button(action: shareDocument) {
                 HStack {
                     Image(systemName: exportType == .pdf ? "doc.fill" : "photo.fill")
@@ -166,7 +141,8 @@ struct DocumentDetailView: View {
             }
             .padding(.horizontal, 20)
         }
-        .padding(.vertical, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Actions
