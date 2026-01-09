@@ -30,7 +30,7 @@ struct ScannerView: View {
 
     private var lightIconName: String {
         switch cameraManager.lightMode {
-        case .auto: return "bolt.badge.automatic"
+        case .auto: return "bolt.badge.automaticit "
         case .on: return "bolt.fill"
         case .off: return "bolt.slash"
         }
@@ -748,31 +748,40 @@ struct SwipableThumbnail: View {
         -dragOffset > deleteThreshold
     }
 
-    var body: some View {
-        ZStack(alignment: .top) {
-            // Delete icon (appears when dragged past threshold)
-            if shouldDelete && isDragging {
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "trash.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white)
-                    )
-                    .offset(y: -52)
-                    .transition(.scale.combined(with: .opacity))
-            }
+    // Gradual opacity for delete icon based on drag progress
+    private var deleteIconOpacity: Double {
+        guard isDragging else { return 0 }
+        let progress = -dragOffset / deleteThreshold
+        // Start fading in at 70% of threshold, fully visible at 100%
+        let fadeStart: Double = 0.7
+        if progress < fadeStart { return 0 }
+        return min(1.0, (progress - fadeStart) / (1.0 - fadeStart))
+    }
 
-            // Thumbnail image
+    var body: some View {
+        ZStack {
+            // Thumbnail image with delete icon overlay
             Image(uiImage: page.image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: width, height: height)
                 .cornerRadius(4)
                 .clipped()
+                .overlay(alignment: .top) {
+                    // Delete icon above thumbnail, gradual fade
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 52, height: 52)
+                        .overlay(
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                        )
+                        .offset(y: -60)  // Position above thumbnail
+                        .opacity(deleteIconOpacity)
+                }
                 .offset(y: dragOffset)
-                .opacity(isDragging ? (shouldDelete ? 0.6 : 0.9) : 1.0)
+                .opacity(isDragging ? (shouldDelete ? 0.7 : 0.9) : 1.0)
                 .scaleEffect(isDragging ? 0.95 : 1.0)
                 .gesture(
                     DragGesture()
@@ -803,7 +812,6 @@ struct SwipableThumbnail: View {
                             }
                         }
                 )
-                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: shouldDelete)
         }
         .frame(width: width, height: height)
     }
