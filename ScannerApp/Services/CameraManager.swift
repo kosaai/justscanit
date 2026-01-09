@@ -27,6 +27,7 @@ class CameraManager: NSObject, ObservableObject {
     private let sessionQueue = DispatchQueue(label: "com.scanner.session")
     private var cameraDevice: AVCaptureDevice?
     private var isConfiguring = false
+    private var pendingLightMode: LightMode?
 
     private var rectangleDetectionRequest: VNDetectRectanglesRequest?
     private var lastDetectionTime = Date()
@@ -172,13 +173,24 @@ class CameraManager: NSObject, ObservableObject {
         sessionQueue.async { [weak self] in
             guard let self = self, !self.session.isRunning else { return }
             self.session.startRunning()
+
+            // Apply pending light mode after session starts
+            if let device = self.cameraDevice, let pendingMode = self.pendingLightMode {
+                self.pendingLightMode = nil
+                self.applyTorchMode(pendingMode, to: device)
+            }
         }
     }
 
     func stopSession() {
-        setTorchMode(.off)
         sessionQueue.async { [weak self] in
             guard let self = self, self.session.isRunning else { return }
+            // Turn off torch without affecting pendingLightMode
+            if let device = self.cameraDevice, device.hasTorch {
+                try? device.lockForConfiguration()
+                device.torchMode = .off
+                device.unlockForConfiguration()
+            }
             self.session.stopRunning()
         }
     }
@@ -186,8 +198,22 @@ class CameraManager: NSObject, ObservableObject {
     // MARK: - Torch Control
 
     func setTorchMode(_ mode: LightMode) {
-        guard let device = cameraDevice, device.hasTorch else { return }
+        // Always store as pending - will be applied when session starts/is running
+        pendingLightMode = mode
+        DispatchQueue.main.async {
+            self.lightMode = mode
+        }
 
+        // If session is already running, apply immediately
+        sessionQueue.async { [weak self] in
+            guard let self = self,
+                  self.session.isRunning,
+                  let device = self.cameraDevice else { return }
+            self.applyTorchMode(mode, to: device)
+        }
+    }
+
+    private func applyTorchMode(_ mode: LightMode, to device: AVCaptureDevice) {
         do {
             try device.lockForConfiguration()
             switch mode {
