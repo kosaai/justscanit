@@ -570,6 +570,21 @@ struct ScannerView: View {
                     DocumentStorage.shared.deleteImage(filename: path)
                 }
                 currentDocument?.pages.remove(at: index)
+
+                // Update or delete document in storage if it's an existing document
+                if let doc = currentDocument {
+                    let isExistingDocument = DocumentStorage.shared.documents.contains { $0.id == doc.id }
+                    if isExistingDocument {
+                        if doc.pages.isEmpty {
+                            // All pages deleted - remove document entirely
+                            DocumentStorage.shared.deleteDocument(doc)
+                            currentDocument = nil
+                        } else {
+                            // Update document with remaining pages
+                            DocumentStorage.shared.updateDocument(doc)
+                        }
+                    }
+                }
             }
         }
     }
