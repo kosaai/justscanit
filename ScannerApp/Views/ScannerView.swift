@@ -83,20 +83,20 @@ struct ScannerView: View {
 
                         // UI Overlay
                         VStack {
-                            // Top: Close button (below safe area to avoid system UI)
+                            // Top: Close button (fully below safe area)
                             HStack {
                                 Button(action: onDismiss) {
                                     Image(systemName: "xmark")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
-                                        .frame(width: 36, height: 36)
+                                        .frame(width: 44, height: 44)
                                         .background(Color.black.opacity(0.5))
                                         .clipShape(Circle())
                                 }
                                 Spacer()
                             }
                             .padding(.leading, 16)
-                            .padding(.top, geometry.safeAreaInsets.top + 16)
+                            .padding(.top, geometry.safeAreaInsets.top + 44)
 
                             Spacer()
 
