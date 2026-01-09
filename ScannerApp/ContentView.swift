@@ -13,7 +13,6 @@ struct ContentView: View {
     @State private var capturedImage: UIImage?
     @State private var detectedRectangle: VNRectangleObservation?
     @State private var currentDocument: ScannedDocument?
-    @State private var shareItem: ShareItem?
 
     var body: some View {
         ZStack {
@@ -32,12 +31,10 @@ struct ContentView: View {
                     currentDocument: $currentDocument,
                     onCapture: {},
                     onDismiss: {
-                        // Discard current session
                         discardCurrentDocument()
                         currentScreen = .home
                     },
                     onFinish: {
-                        // Scanner finished - go to document detail view
                         currentScreen = .documentDetail
                     }
                 )
@@ -60,11 +57,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: currentScreen)
-        .sheet(item: $shareItem) { item in
-            ShareSheetView(items: [item.url])
-        }
         .onAppear {
-            // Start with scanner on first launch
             if DocumentStorage.shared.documents.isEmpty {
                 currentScreen = .scanner
             }

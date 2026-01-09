@@ -6,6 +6,21 @@ enum ExportType {
     case images
 }
 
+// MARK: - Shareable Content
+
+/// Identifiable wrapper for share sheet content.
+/// Using `.sheet(item:)` ensures the sheet is recreated with fresh content each time.
+struct ShareableContent: Identifiable {
+    let id = UUID()
+    let items: [Any]
+    let cleanup: (() -> Void)?
+
+    init(items: [Any], cleanup: (() -> Void)? = nil) {
+        self.items = items
+        self.cleanup = cleanup
+    }
+}
+
 struct DocumentDetailView: View {
     @Binding var document: ScannedDocument
     let onBackToScanning: () -> Void
@@ -15,8 +30,8 @@ struct DocumentDetailView: View {
     @State private var exportType: ExportType = .pdf
     @State private var isEditingName = false
     @State private var editedName: String = ""
-    @State private var showShareSheet = false
-    @State private var shareItems: [Any] = []
+    @State private var shareableContent: ShareableContent?
+    @State private var isGeneratingShare = false
 
     @FocusState private var isNameFieldFocused: Bool
 
@@ -38,9 +53,21 @@ struct DocumentDetailView: View {
 
                 bottomControls
             }
+
+            // Loading overlay while generating PDF
+            if isGeneratingShare {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.5)
+            }
         }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheetView(items: shareItems)
+        .sheet(item: $shareableContent, onDismiss: {
+            // Clean up temporary files when sheet is dismissed
+            shareableContent?.cleanup?()
+        }) { content in
+            ActivityViewControllerRepresentable(items: content.items)
         }
         .onAppear {
             editedName = document.name
@@ -171,40 +198,114 @@ struct DocumentDetailView: View {
     }
 
     private func sharePDF() {
-        // Always generate fresh PDF to ensure it's up to date
-        let images = document.pages.compactMap { page -> UIImage? in
-            if let cropped = page.croppedImagePath {
-                return DocumentStorage.shared.loadImage(filename: cropped)
+        // Prevent double-tap
+        guard !isGeneratingShare else { return }
+        isGeneratingShare = true
+
+        // Generate PDF on background thread to avoid UI blocking
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = self.generatePDFForSharing()
+
+            DispatchQueue.main.async {
+                self.isGeneratingShare = false
+
+                switch result {
+                case .success(let url):
+                    self.shareableContent = ShareableContent(
+                        items: [url],
+                        cleanup: {
+                            // Clean up temporary file after sharing
+                            try? FileManager.default.removeItem(at: url)
+                        }
+                    )
+                case .failure(let error):
+                    print("PDF sharing failed: \(error)")
+                }
             }
-            return DocumentStorage.shared.loadImage(filename: page.originalImagePath)
+        }
+    }
+
+    private func generatePDFForSharing() -> Result<URL, ShareError> {
+        // Load images from document pages
+        let images = document.pages.compactMap { page -> UIImage? in
+            let path = page.croppedImagePath ?? page.originalImagePath
+            return DocumentStorage.shared.loadImage(filename: path)
         }
 
-        guard !images.isEmpty else { return }
+        guard !images.isEmpty else {
+            return .failure(.noImages)
+        }
 
-        if let pdfData = PDFGenerator.shared.generatePDF(from: images),
-           let pdfPath = DocumentStorage.shared.savePDF(pdfData, for: document.id) {
-            document.pdfPath = pdfPath
-            DocumentStorage.shared.updateDocument(document)
+        // Generate PDF data
+        guard let pdfData = PDFGenerator.shared.generatePDF(from: images) else {
+            return .failure(.pdfGenerationFailed)
+        }
 
-            let pdfURL = DocumentStorage.shared.getPDFURL(filename: pdfPath)
+        // Create temporary file with document name
+        let sanitizedName = document.name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(sanitizedName).pdf")
 
-            // Verify file exists before sharing
-            if FileManager.default.fileExists(atPath: pdfURL.path) {
-                shareItems = [pdfURL]
-                showShareSheet = true
-            }
+        // Remove existing file if present
+        try? FileManager.default.removeItem(at: tempURL)
+
+        // Write PDF to temporary file
+        do {
+            try pdfData.write(to: tempURL)
+            return .success(tempURL)
+        } catch {
+            return .failure(.fileWriteFailed(error))
         }
     }
 
     private func shareImages() {
         let images = document.pages.compactMap { page -> UIImage? in
-            if let cropped = page.croppedImagePath {
-                return DocumentStorage.shared.loadImage(filename: cropped)
-            }
-            return DocumentStorage.shared.loadImage(filename: page.originalImagePath)
+            let path = page.croppedImagePath ?? page.originalImagePath
+            return DocumentStorage.shared.loadImage(filename: path)
         }
-        shareItems = images
-        showShareSheet = true
+
+        guard !images.isEmpty else {
+            print("No images to share")
+            return
+        }
+
+        shareableContent = ShareableContent(items: images)
+    }
+}
+
+// MARK: - Share Errors
+
+enum ShareError: Error, CustomStringConvertible {
+    case noImages
+    case pdfGenerationFailed
+    case fileWriteFailed(Error)
+
+    var description: String {
+        switch self {
+        case .noImages:
+            return "No images found in document pages"
+        case .pdfGenerationFailed:
+            return "Failed to generate PDF from images"
+        case .fileWriteFailed(let error):
+            return "Failed to write PDF file: \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Activity View Controller (UIKit Bridge)
+
+/// Proper UIActivityViewController wrapper that receives items at creation time.
+struct ActivityViewControllerRepresentable: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // UIActivityViewController cannot be updated - it's created once with items
     }
 }
 

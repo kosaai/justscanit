@@ -1,12 +1,6 @@
 import SwiftUI
 import UIKit
 
-// Wrapper to make URL identifiable for sheet presentation
-struct ShareItem: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
 struct HomeView: View {
     @ObservedObject var storage = DocumentStorage.shared
     let onStartScanning: () -> Void
@@ -14,7 +8,8 @@ struct HomeView: View {
 
     @State private var showDeleteConfirm = false
     @State private var documentToDelete: ScannedDocument?
-    @State private var shareItem: ShareItem?
+    @State private var shareableContent: ShareableContent?
+    @State private var isGeneratingShare = false
 
     var body: some View {
         NavigationView {
@@ -95,46 +90,74 @@ struct HomeView: View {
             } message: {
                 Text("This will permanently delete the document and all its pages.")
             }
-            .sheet(item: $shareItem) { item in
-                ShareSheetView(items: [item.url])
+            .sheet(item: $shareableContent, onDismiss: {
+                shareableContent?.cleanup?()
+            }) { content in
+                ActivityViewControllerRepresentable(items: content.items)
+            }
+            .overlay {
+                if isGeneratingShare {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                }
             }
         }
     }
 
     private func shareDocument(_ document: ScannedDocument) {
-        guard let pdfPath = document.pdfPath else {
-            regeneratePDF(for: document)
-            return
-        }
+        guard !isGeneratingShare else { return }
+        isGeneratingShare = true
 
-        let url = DocumentStorage.shared.getPDFURL(filename: pdfPath)
-        shareItem = ShareItem(url: url)
-    }
-
-    private func regeneratePDF(for document: ScannedDocument) {
         DispatchQueue.global(qos: .userInitiated).async {
-            autoreleasepool {
-                let images = document.pages.compactMap { page -> UIImage? in
-                    autoreleasepool {
-                        if let cropped = page.croppedImagePath {
-                            return DocumentStorage.shared.loadImage(filename: cropped)
+            let result = generatePDFForSharing(document: document)
+
+            DispatchQueue.main.async {
+                isGeneratingShare = false
+
+                switch result {
+                case .success(let url):
+                    shareableContent = ShareableContent(
+                        items: [url],
+                        cleanup: {
+                            try? FileManager.default.removeItem(at: url)
                         }
-                        return DocumentStorage.shared.loadImage(filename: page.originalImagePath)
-                    }
-                }
-
-                if let pdfData = PDFGenerator.shared.generatePDF(from: images),
-                   let pdfPath = DocumentStorage.shared.savePDF(pdfData, for: document.id) {
-                    var updatedDoc = document
-                    updatedDoc.pdfPath = pdfPath
-                    DocumentStorage.shared.updateDocument(updatedDoc)
-
-                    DispatchQueue.main.async {
-                        let url = DocumentStorage.shared.getPDFURL(filename: pdfPath)
-                        self.shareItem = ShareItem(url: url)
-                    }
+                    )
+                case .failure(let error):
+                    print("HomeView PDF sharing failed: \(error)")
                 }
             }
+        }
+    }
+
+    private func generatePDFForSharing(document: ScannedDocument) -> Result<URL, ShareError> {
+        let images = document.pages.compactMap { page -> UIImage? in
+            let path = page.croppedImagePath ?? page.originalImagePath
+            return DocumentStorage.shared.loadImage(filename: path)
+        }
+
+        guard !images.isEmpty else {
+            return .failure(.noImages)
+        }
+
+        guard let pdfData = PDFGenerator.shared.generatePDF(from: images) else {
+            return .failure(.pdfGenerationFailed)
+        }
+
+        let sanitizedName = document.name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(sanitizedName).pdf")
+
+        try? FileManager.default.removeItem(at: tempURL)
+
+        do {
+            try pdfData.write(to: tempURL)
+            return .success(tempURL)
+        } catch {
+            return .failure(.fileWriteFailed(error))
         }
     }
 }
@@ -297,14 +320,3 @@ struct DocumentThumbnailStack: View {
     }
 }
 
-// MARK: - Share Sheet
-
-struct ShareSheetView: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
