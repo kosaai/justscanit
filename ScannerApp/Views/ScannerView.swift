@@ -5,6 +5,7 @@ import UIKit
 
 struct ScannerView: View {
     @StateObject private var cameraManager = CameraManager()
+    @StateObject private var settings = ScannerSettings.shared
     @Binding var capturedImage: UIImage?
     @Binding var detectedRectangle: VNRectangleObservation?
     @Binding var currentDocument: ScannedDocument?
@@ -18,7 +19,7 @@ struct ScannerView: View {
     @State private var lastStableRectangle: VNRectangleObservation?
     @State private var steadyProgress: CGFloat = 0
     @State private var cameraViewSize: CGSize = .zero
-    @State private var captureMode: CaptureMode = .auto
+    @State private var showSettings = false
 
     // Capture animation state
     @State private var captureAnimationData: CaptureAnimationData?
@@ -27,14 +28,6 @@ struct ScannerView: View {
     @State private var isAnimatingCapture = false  // Prevents new captures during animation
 
     private let steadyDuration: TimeInterval = 1.0
-
-    private var lightIconName: String {
-        switch cameraManager.lightMode {
-        case .auto: return "bolt.badge.automaticit "
-        case .on: return "bolt.fill"
-        case .off: return "bolt.slash"
-        }
-    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -101,7 +94,7 @@ struct ScannerView: View {
                             Spacer()
 
                             // Center-bottom: Status badge (only in auto mode, hidden during animation)
-                            if captureMode == .auto && !isAnimatingCapture {
+                            if settings.captureModeValue == .auto && !isAnimatingCapture {
                                 StatusBadge(
                                     isDetected: cameraManager.detectedRectangle != nil,
                                     isHoldingSteady: isHoldingSteady,
@@ -111,49 +104,12 @@ struct ScannerView: View {
 
                             // Bottom: Action buttons
                             HStack {
-                                // Settings menu (3 dots)
-                                Menu {
-                                    // Light settings
-                                    Menu {
-                                        ForEach(LightMode.allCases, id: \.self) { mode in
-                                            Button {
-                                                cameraManager.setTorchMode(mode)
-                                            } label: {
-                                                HStack {
-                                                    Text(mode.rawValue)
-                                                    if cameraManager.lightMode == mode {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        Label("Light", systemImage: lightIconName)
-                                    }
-
-                                    // Capture mode settings
-                                    Menu {
-                                        ForEach(CaptureMode.allCases, id: \.self) { mode in
-                                            Button {
-                                                captureMode = mode
-                                                if mode == .manual {
-                                                    resetSteadyState()
-                                                }
-                                            } label: {
-                                                HStack {
-                                                    Text(mode.rawValue)
-                                                    if captureMode == mode {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        Label("Capture", systemImage: "camera")
-                                    }
+                                // Settings button
+                                Button {
+                                    showSettings = true
                                 } label: {
-                                    Image(systemName: "ellipsis")
-                                        .font(.system(size: 20))
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 18))
                                         .foregroundColor(.white)
                                         .frame(width: 44, height: 44)
                                         .background(Color.black.opacity(0.5))
@@ -163,7 +119,7 @@ struct ScannerView: View {
                                 Spacer()
 
                                 // Manual capture button (only in manual mode)
-                                if captureMode == .manual {
+                                if settings.captureModeValue == .manual {
                                     Button(action: manualCapture) {
                                         ZStack {
                                             Circle()
@@ -231,6 +187,8 @@ struct ScannerView: View {
             cameraManager.setupCamera()
             cameraManager.startSession()
             loadExistingPages()
+            // Apply saved light mode on appear
+            cameraManager.setTorchMode(settings.lightModeValue)
         }
         .onDisappear {
             cameraManager.stopSession()
@@ -244,13 +202,25 @@ struct ScannerView: View {
                 handleCapturedImage(image)
             }
         }
+        .onChange(of: settings.captureModeValue) { newMode in
+            if newMode == .manual {
+                resetSteadyState()
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsSheetView(settings: settings) { lightMode in
+                cameraManager.setTorchMode(lightMode)
+            }
+            .presentationDetents([.fraction(0.35)])
+            .presentationDragIndicator(.hidden)
+        }
     }
 
     // MARK: - Auto-capture Logic
 
     private func handleRectangleDetection(_ newRect: VNRectangleObservation?) {
         // Only handle auto-capture in auto mode
-        guard captureMode == .auto else { return }
+        guard settings.captureModeValue == .auto else { return }
 
         // Don't process during capture animation
         guard !isAnimatingCapture else { return }
@@ -744,16 +714,12 @@ struct ThumbnailStrip: View {
     }
 }
 
-// Helper to conditionally disable scrolling on iOS 16+
+// Helper to conditionally disable scrolling
 struct ScrollDisabledModifier: ViewModifier {
     let isDisabled: Bool
 
     func body(content: Content) -> some View {
-        if #available(iOS 16.0, *) {
-            content.scrollDisabled(isDisabled)
-        } else {
-            content
-        }
+        content.scrollDisabled(isDisabled)
     }
 }
 

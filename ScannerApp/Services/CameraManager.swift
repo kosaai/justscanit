@@ -24,7 +24,9 @@ class CameraManager: NSObject, ObservableObject {
     private let photoOutput = AVCapturePhotoOutput()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let processingQueue = DispatchQueue(label: "com.scanner.processing", qos: .userInteractive)
+    private let sessionQueue = DispatchQueue(label: "com.scanner.session")
     private var cameraDevice: AVCaptureDevice?
+    private var isConfiguring = false
 
     private var rectangleDetectionRequest: VNDetectRectanglesRequest?
     private var lastDetectionTime = Date()
@@ -79,59 +81,66 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     private func configureSession() {
-        session.beginConfiguration()
-        session.sessionPreset = .photo
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
 
-        // Add camera input
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: camera) else {
-            DispatchQueue.main.async { self.error = .cameraUnavailable }
-            session.commitConfiguration()
-            return
-        }
+            self.isConfiguring = true
+            defer { self.isConfiguring = false }
 
-        guard session.canAddInput(input) else {
-            DispatchQueue.main.async { self.error = .cannotAddInput }
-            session.commitConfiguration()
-            return
-        }
-        session.addInput(input)
-        self.cameraDevice = camera
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .photo
 
-        // Configure camera for document scanning
-        try? camera.lockForConfiguration()
-        if camera.isFocusModeSupported(.continuousAutoFocus) {
-            camera.focusMode = .continuousAutoFocus
-        }
-        if camera.isExposureModeSupported(.continuousAutoExposure) {
-            camera.exposureMode = .continuousAutoExposure
-        }
-        camera.unlockForConfiguration()
+            // Add camera input
+            guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                  let input = try? AVCaptureDeviceInput(device: camera) else {
+                DispatchQueue.main.async { self.error = .cameraUnavailable }
+                self.session.commitConfiguration()
+                return
+            }
 
-        // Add photo output
-        guard session.canAddOutput(photoOutput) else {
-            DispatchQueue.main.async { self.error = .cannotAddOutput }
-            session.commitConfiguration()
-            return
-        }
-        session.addOutput(photoOutput)
-        photoOutput.isHighResolutionCaptureEnabled = true
+            guard self.session.canAddInput(input) else {
+                DispatchQueue.main.async { self.error = .cannotAddInput }
+                self.session.commitConfiguration()
+                return
+            }
+            self.session.addInput(input)
+            self.cameraDevice = camera
 
-        // Add video output for live edge detection
-        videoOutput.setSampleBufferDelegate(self, queue: processingQueue)
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        guard session.canAddOutput(videoOutput) else {
-            session.commitConfiguration()
-            return
-        }
-        session.addOutput(videoOutput)
+            // Configure camera for document scanning
+            try? camera.lockForConfiguration()
+            if camera.isFocusModeSupported(.continuousAutoFocus) {
+                camera.focusMode = .continuousAutoFocus
+            }
+            if camera.isExposureModeSupported(.continuousAutoExposure) {
+                camera.exposureMode = .continuousAutoExposure
+            }
+            camera.unlockForConfiguration()
 
-        // Set video orientation
-        if let connection = videoOutput.connection(with: .video) {
-            connection.videoOrientation = .portrait
-        }
+            // Add photo output
+            guard self.session.canAddOutput(self.photoOutput) else {
+                DispatchQueue.main.async { self.error = .cannotAddOutput }
+                self.session.commitConfiguration()
+                return
+            }
+            self.session.addOutput(self.photoOutput)
+            self.photoOutput.isHighResolutionCaptureEnabled = true
 
-        session.commitConfiguration()
+            // Add video output for live edge detection
+            self.videoOutput.setSampleBufferDelegate(self, queue: self.processingQueue)
+            self.videoOutput.alwaysDiscardsLateVideoFrames = true
+            guard self.session.canAddOutput(self.videoOutput) else {
+                self.session.commitConfiguration()
+                return
+            }
+            self.session.addOutput(self.videoOutput)
+
+            // Set video orientation
+            if let connection = self.videoOutput.connection(with: .video) {
+                connection.videoOrientation = .portrait
+            }
+
+            self.session.commitConfiguration()
+        }
     }
 
     private func setupRectangleDetection() {
@@ -160,17 +169,17 @@ class CameraManager: NSObject, ObservableObject {
     // MARK: - Session Control
 
     func startSession() {
-        guard !session.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.startRunning()
+        sessionQueue.async { [weak self] in
+            guard let self = self, !self.session.isRunning else { return }
+            self.session.startRunning()
         }
     }
 
     func stopSession() {
-        guard session.isRunning else { return }
         setTorchMode(.off)
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.stopRunning()
+        sessionQueue.async { [weak self] in
+            guard let self = self, self.session.isRunning else { return }
+            self.session.stopRunning()
         }
     }
 
