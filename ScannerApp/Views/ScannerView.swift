@@ -672,6 +672,13 @@ struct ThumbnailStrip: View {
         thumbnailHeight / 1.4 // Inverse of page aspect ratio
     }
 
+    // Calculate total content width
+    private var contentWidth: CGFloat {
+        let count = CGFloat(pages.count)
+        guard count > 0 else { return 0 }
+        return (thumbnailWidth * count) + (spacing * (count - 1)) + (horizontalPadding * 2)
+    }
+
     var body: some View {
         if pages.isEmpty {
             VStack(spacing: 4) {
@@ -684,35 +691,53 @@ struct ThumbnailStrip: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                ScrollViewReader { proxy in
-                    HStack(spacing: spacing) {
-                        ForEach(pages) { page in
-                            SwipableThumbnail(
-                                page: page,
-                                width: thumbnailWidth,
-                                height: thumbnailHeight,
-                                onDelete: { onDelete(page.id) }
-                            )
-                            .id(page.id)
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.5).combined(with: .opacity),
-                                removal: .scale(scale: 0.8).combined(with: .opacity)
-                            ))
+            GeometryReader { geometry in
+                let needsScroll = contentWidth > geometry.size.width
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ScrollViewReader { proxy in
+                        HStack(spacing: spacing) {
+                            ForEach(pages) { page in
+                                SwipableThumbnail(
+                                    page: page,
+                                    width: thumbnailWidth,
+                                    height: thumbnailHeight,
+                                    onDelete: { onDelete(page.id) }
+                                )
+                                .id(page.id)
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 0.5).combined(with: .opacity),
+                                    removal: .scale(scale: 0.8).combined(with: .opacity)
+                                ))
+                            }
                         }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-                    .padding(.vertical, 8)
-                    .onChange(of: pages.count) { (_: Int) in
-                        if let lastPage = pages.last {
-                            withAnimation {
-                                proxy.scrollTo(lastPage.id, anchor: .trailing)
+                        .padding(.horizontal, horizontalPadding)
+                        .padding(.vertical, 8)
+                        .onChange(of: pages.count) { (_: Int) in
+                            if let lastPage = pages.last {
+                                withAnimation {
+                                    proxy.scrollTo(lastPage.id, anchor: .trailing)
+                                }
                             }
                         }
                     }
                 }
+                .modifier(ScrollDisabledModifier(isDisabled: !needsScroll))
+                .modifier(ScrollClipDisabledModifier())
             }
-            .modifier(ScrollClipDisabledModifier())
+        }
+    }
+}
+
+// Helper to conditionally disable scrolling on iOS 16+
+struct ScrollDisabledModifier: ViewModifier {
+    let isDisabled: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.scrollDisabled(isDisabled)
+        } else {
+            content
         }
     }
 }
