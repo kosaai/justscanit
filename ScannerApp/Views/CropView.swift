@@ -89,9 +89,14 @@ struct CropView: View {
                                     x: (corners[index].x + corners[nextIndex].x) / 2,
                                     y: (corners[index].y + corners[nextIndex].y) / 2
                                 )
+                                // Calculate edge angle from the two corner points
+                                let edgeAngle = atan2(
+                                    corners[nextIndex].y - corners[index].y,
+                                    corners[nextIndex].x - corners[index].x
+                                )
                                 CropEdgeHandle(
                                     position: midpoint,
-                                    isHorizontal: index == 0 || index == 2,
+                                    angle: edgeAngle,
                                     onDragChanged: { newPosition in
                                         handleEdgeDrag(index: index, position: newPosition)
                                     },
@@ -328,7 +333,7 @@ struct CropCornerHandle: View {
 
 struct CropEdgeHandle: View {
     let position: CGPoint
-    let isHorizontal: Bool
+    let angle: CGFloat  // Angle of the edge in radians
     let onDragChanged: (CGPoint) -> Void
     let onDragStarted: () -> Void
     let onDragEnded: () -> Void
@@ -338,14 +343,12 @@ struct CropEdgeHandle: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
             .fill(Color.cyan)
-            .frame(
-                width: isHorizontal ? 40 : 14,
-                height: isHorizontal ? 14 : 40
-            )
+            .frame(width: 40, height: 14)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(Color.white, lineWidth: 2)
             )
+            .rotationEffect(Angle(radians: angle))
             .position(position)
             .gesture(
                 DragGesture(coordinateSpace: .named("cropArea"))
