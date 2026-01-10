@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — Just Scan It</title>
+    <meta name="description" content="Privacy policy for Just Scan It. We don't collect any data. Your documents stay on your device.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .policy-page {
+            min-height: 100vh;
+            padding: calc(var(--nav-height) + var(--space-xl)) var(--space-lg) var(--space-2xl);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .policy-header {
+            margin-bottom: var(--space-xl);
+        }
+
+        .policy-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: var(--space-sm);
+        }
+
+        .policy-title {
+            font-family: var(--font-display);
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            letter-spacing: 0.02em;
+            margin-bottom: var(--space-sm);
+        }
+
+        .policy-updated {
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .policy-tldr {
+            background: var(--accent-glow);
+            border: 1px solid var(--accent-dim);
+            border-radius: 12px;
+            padding: var(--space-lg);
+            margin-bottom: var(--space-xl);
+        }
+
+        .tldr-title {
+            font-family: var(--font-display);
+            font-size: 1.25rem;
+            letter-spacing: 0.05em;
+            color: var(--accent);
+            margin-bottom: var(--space-sm);
+        }
+
+        .tldr-text {
+            font-size: 1.125rem;
+            line-height: 1.7;
+        }
+
+        .policy-section {
+            margin-bottom: var(--space-xl);
+        }
+
+        .section-heading {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            letter-spacing: 0.02em;
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .policy-text {
+            font-size: 1.0625rem;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: var(--space-md);
+        }
+
+        .policy-text:last-child {
+            margin-bottom: 0;
+        }
+
+        .policy-list {
+            list-style: none;
+            margin: var(--space-md) 0;
+        }
+
+        .policy-list li {
+            position: relative;
+            padding-left: 1.5rem;
+            margin-bottom: var(--space-sm);
+            color: var(--text-secondary);
+            font-size: 1.0625rem;
+            line-height: 1.7;
+        }
+
+        .policy-list li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-family: var(--font-mono);
+        }
+
+        .highlight-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: var(--space-md);
+            margin: var(--space-md) 0;
+        }
+
+        .highlight-box code {
+            font-family: var(--font-mono);
+            font-size: 0.9375rem;
+            color: var(--accent);
+        }
+
+        .zero-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: var(--space-sm);
+            margin: var(--space-lg) 0;
+        }
+
+        .zero-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: var(--space-md);
+            text-align: center;
+        }
+
+        .zero-value {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            color: var(--accent);
+        }
+
+        .zero-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            margin-top: 0.25rem;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--space-lg);
+            transition: color 0.2s ease;
+        }
+
+        .back-link:hover {
+            color: var(--accent);
+        }
+
+        .contact-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: var(--space-lg);
+            text-align: center;
+        }
+
+        .contact-title {
+            font-family: var(--font-display);
+            font-size: 1.25rem;
+            margin-bottom: var(--space-sm);
+        }
+
+        .contact-text {
+            color: var(--text-secondary);
+            margin-bottom: var(--space-md);
+        }
+
+        .contact-link {
+            font-family: var(--font-mono);
+            color: var(--accent);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="noise-overlay"></div>
+
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">
+            <span class="brand-icon">◫</span>
+            <span class="brand-text">JUST SCAN IT</span>
+        </a>
+        <a href="https://github.com/kuvkir/justscanit" class="nav-link" target="_blank" rel="noopener">
+            <span class="nav-link-icon">↗</span>
+            GitHub
+        </a>
+    </nav>
+
+    <main class="policy-page">
+        <a href="index.html" class="back-link">← Back to home</a>
+
+        <header class="policy-header">
+            <div class="policy-badge">LEGAL</div>
+            <h1 class="policy-title">PRIVACY POLICY</h1>
+            <p class="policy-updated">Last updated: January 10, 2026</p>
+        </header>
+
+        <div class="policy-tldr">
+            <h2 class="tldr-title">TL;DR</h2>
+            <p class="tldr-text">
+                We don't collect any data. Period. Your scanned documents never leave your device.
+                There are no servers, no analytics, no tracking. The app works entirely offline.
+            </p>
+        </div>
+
+        <div class="zero-grid">
+            <div class="zero-item">
+                <div class="zero-value">0</div>
+                <div class="zero-label">Data collected</div>
+            </div>
+            <div class="zero-item">
+                <div class="zero-value">0</div>
+                <div class="zero-label">Servers</div>
+            </div>
+            <div class="zero-item">
+                <div class="zero-value">0</div>
+                <div class="zero-label">Third parties</div>
+            </div>
+            <div class="zero-item">
+                <div class="zero-value">0</div>
+                <div class="zero-label">Tracking</div>
+            </div>
+        </div>
+
+        <section class="policy-section">
+            <h2 class="section-heading">What Data We Collect</h2>
+            <p class="policy-text">
+                <strong>None.</strong> Just Scan It does not collect, store, transmit, or process any personal data.
+                We have no servers. We have no analytics. We have no way to access your documents or any information about you.
+            </p>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Device Permissions</h2>
+            <p class="policy-text">
+                Just Scan It requires one permission to function:
+            </p>
+            <ul class="policy-list">
+                <li><strong>Camera</strong> — Required to scan documents. Images captured by the camera are processed entirely on your device and are never transmitted anywhere.</li>
+            </ul>
+            <p class="policy-text">
+                That's it. No access to contacts, location, microphone, or any other device features.
+            </p>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Where Your Data Is Stored</h2>
+            <p class="policy-text">
+                All scanned documents and app data are stored locally on your device in the app's private sandbox.
+                This data is:
+            </p>
+            <ul class="policy-list">
+                <li>Accessible only to you through the app</li>
+                <li>Protected by your device's security (passcode, Face ID, Touch ID)</li>
+                <li>Automatically included in your iCloud backup if you have that enabled</li>
+                <li>Deleted when you uninstall the app</li>
+            </ul>
+            <div class="highlight-box">
+                <p class="policy-text" style="margin: 0;">
+                    <code>Note:</code> If you enable iCloud backup on your device, your scanned documents may be included in your device backup.
+                    This is controlled by Apple and your device settings, not by our app.
+                </p>
+            </div>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Third-Party Services</h2>
+            <p class="policy-text">
+                Just Scan It does not use any third-party services, SDKs, or analytics tools. There is no:
+            </p>
+            <ul class="policy-list">
+                <li>Google Analytics, Firebase, or any analytics</li>
+                <li>Crash reporting services</li>
+                <li>Advertising networks</li>
+                <li>Social media integrations</li>
+                <li>Cloud storage services</li>
+            </ul>
+            <p class="policy-text">
+                The app is completely self-contained.
+            </p>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Sharing & Export</h2>
+            <p class="policy-text">
+                When you export or share a scanned document (as PDF or image), you're using iOS's built-in sharing system.
+                The destination of that shared file is determined by you — we have no visibility or control over where you send it.
+            </p>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Children's Privacy</h2>
+            <p class="policy-text">
+                Since we don't collect any data from anyone, we also don't collect data from children.
+                The app is safe for users of all ages.
+            </p>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Open Source</h2>
+            <p class="policy-text">
+                Just Scan It is open source. You can verify everything stated in this policy by reviewing our source code on GitHub.
+                We believe transparency is the foundation of trust.
+            </p>
+            <div class="highlight-box">
+                <p class="policy-text" style="margin: 0;">
+                    <code>Verify yourself:</code> Our complete source code is available at
+                    <a href="https://github.com/kuvkir/justscanit" style="color: var(--accent);">github.com/kuvkir/justscanit</a>
+                </p>
+            </div>
+        </section>
+
+        <section class="policy-section">
+            <h2 class="section-heading">Changes to This Policy</h2>
+            <p class="policy-text">
+                If we ever change this policy, we'll update the "Last updated" date at the top.
+                But honestly, there's not much to change — we don't collect data now, and we don't plan to start.
+            </p>
+        </section>
+
+        <section class="policy-section">
+            <div class="contact-box">
+                <h2 class="contact-title">QUESTIONS?</h2>
+                <p class="contact-text">
+                    If you have any questions about this privacy policy, you can reach us through GitHub.
+                </p>
+                <a href="https://github.com/kuvkir/justscanit/issues" class="contact-link" target="_blank" rel="noopener">
+                    Open an issue on GitHub →
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <span class="brand-icon">◫</span>
+                <span>JUST SCAN IT</span>
+            </div>
+            <div class="footer-links">
+                <a href="https://github.com/kuvkir/justscanit" target="_blank" rel="noopener">Source Code</a>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+            <p class="footer-copy">
+                Made with care. Open source under MIT License.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
