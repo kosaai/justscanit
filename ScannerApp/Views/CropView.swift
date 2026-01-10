@@ -44,8 +44,8 @@ struct CropView: View {
                         let imageCorners = convertCornersToImageCoordinates()
                         onApply(imageCorners)
                     }
-                    .foregroundColor(.blue)
-                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AppColors.accent)
+                    .font(.system(size: 17, weight: .bold))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -308,7 +308,7 @@ struct CropCornerHandle: View {
 
     var body: some View {
         Circle()
-            .fill(Color.cyan)
+            .fill(AppColors.accent)
             .frame(width: size, height: size)
             .overlay(Circle().stroke(Color.white, lineWidth: 3))
             .position(position)
@@ -342,7 +342,7 @@ struct CropEdgeHandle: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
-            .fill(Color.cyan)
+            .fill(AppColors.accent)
             .frame(width: 40, height: 14)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
@@ -374,7 +374,7 @@ struct CropBorderView: View {
 
     var body: some View {
         CropShapePath(corners: corners)
-            .stroke(Color.cyan, lineWidth: 2)
+            .stroke(AppColors.accent, lineWidth: 2)
     }
 }
 
@@ -503,7 +503,7 @@ struct CropMagnifierView: View {
                 path.move(to: CGPoint(x: center, y: center + gap))
                 path.addLine(to: CGPoint(x: center, y: center + lineLength))
             }
-            .stroke(Color.cyan, lineWidth: 1.5)
+            .stroke(AppColors.accent, lineWidth: 1.5)
             .frame(width: size, height: size)
 
             // Border
@@ -566,7 +566,7 @@ struct MagnifierCropBorderView: View {
             }
             path.closeSubpath()
 
-            context.stroke(path, with: .color(.cyan), lineWidth: 3)
+            context.stroke(path, with: .color(AppColors.accent), lineWidth: 3)
         }
         .frame(width: size, height: size)
         .allowsHitTesting(false)

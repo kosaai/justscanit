@@ -82,7 +82,7 @@ struct SettingRow: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 16))
-                    .foregroundColor(.blue)
+                    .foregroundColor(AppColors.accent)
                     .frame(width: 24)
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
@@ -102,7 +102,7 @@ struct SettingRow: View {
                             .padding(.vertical, 8)
                             .background(
                                 Capsule()
-                                    .fill(selected == option ? Color.blue : Color(.systemGray5))
+                                    .fill(selected == option ? AppColors.accent : Color(.systemGray5))
                             )
                     }
                     .buttonStyle(.plain)

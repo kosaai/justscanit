@@ -252,16 +252,17 @@ struct DocumentDetailView: View {
             Button(action: shareDocument) {
                 HStack {
                     Image(systemName: exportType == .pdf ? "doc.fill" : "photo.fill")
-                        .font(.system(size: 18))
-                        .frame(width: 20, height: 20)
+                        .font(.system(size: 20, weight: .semibold))
+                        .frame(width: 22, height: 22)
                     Text(saveButtonTitle)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 18, weight: .bold))
                 }
                 .foregroundColor(.white)
-                .frame(maxWidth: .infinity, minHeight: 24)
-                .padding(.vertical, 14)
-                .background(Color.blue)
-                .cornerRadius(12)
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .padding(.vertical, 16)
+                .background(AppColors.accent)
+                .cornerRadius(14)
+                .shadow(color: AppColors.accent.opacity(0.4), radius: 8, x: 0, y: 4)
             }
             .padding(.horizontal, 20)
         }

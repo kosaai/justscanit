@@ -8,8 +8,6 @@ struct PageAdjustmentToolbar: View {
     let onCrop: () -> Void
     let onRestoreEnhance: () -> Void
 
-    private let tealColor = Color(red: 0.0, green: 0.6, blue: 0.65)
-
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar content
@@ -45,12 +43,12 @@ struct PageAdjustmentToolbar: View {
                 )
             }
             .padding(.horizontal, 32)
-            .padding(.top, 24)
-            .padding(.bottom, 32)
+            .padding(.top, 28)
+            .padding(.bottom, 36)
         }
-        .background(tealColor)
+        .background(AppColors.accent)
         .clipShape(
-            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+            RoundedCorner(radius: 24, corners: [.topLeft, .topRight])
         )
     }
 }
@@ -62,19 +60,20 @@ struct AdjustmentButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(Color.white)
-                        .frame(width: 56, height: 56)
+                        .frame(width: 62, height: 62)
+                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
 
                     Image(systemName: icon)
-                        .font(.system(size: 22))
-                        .foregroundColor(Color(red: 0.0, green: 0.5, blue: 0.55))
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(AppColors.accentDark)
                 }
 
                 Text(label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
             }
         }

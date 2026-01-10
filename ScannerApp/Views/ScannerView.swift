@@ -151,12 +151,13 @@ struct ScannerView: View {
 
                                     Button(action: finishScanning) {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 20, weight: .bold))
+                                            .font(.system(size: 22, weight: .bold))
                                             .foregroundColor(.white)
-                                            .frame(width: 52, height: 52)
+                                            .frame(width: 56, height: 56)
                                             .background(
-                                                Circle().fill(scannedPages.isEmpty ? Color.gray : Color.blue)
+                                                Circle().fill(scannedPages.isEmpty ? Color.gray : AppColors.accent)
                                             )
+                                            .shadow(color: scannedPages.isEmpty ? .clear : AppColors.accent.opacity(0.4), radius: 6, x: 0, y: 3)
                                     }
                                     .disabled(scannedPages.isEmpty)
                                 }
@@ -622,7 +623,7 @@ struct StatusBadge: View {
                     GeometryReader { geometry in
                         if isHoldingSteady {
                             Capsule()
-                                .fill(Color.blue.opacity(0.5))
+                                .fill(AppColors.accent.opacity(0.6))
                                 .frame(width: geometry.size.width * progress)
                         }
                     }

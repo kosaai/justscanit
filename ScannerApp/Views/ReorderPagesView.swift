@@ -90,7 +90,7 @@ struct ReorderPagesView: View {
             Button("Cancel") {
                 onCancel()
             }
-            .foregroundColor(.blue)
+            .foregroundColor(AppColors.accent)
 
             Spacer()
 
@@ -102,7 +102,7 @@ struct ReorderPagesView: View {
             Button("Done") {
                 onDone(reorderedPages)
             }
-            .foregroundColor(.blue)
+            .foregroundColor(AppColors.accent)
             .fontWeight(.semibold)
         }
         .padding(.horizontal, 16)
@@ -271,7 +271,7 @@ struct PageCellContainer: View {
                         .strokeBorder(
                             style: StrokeStyle(lineWidth: 2, dash: [6, 4])
                         )
-                        .foregroundColor(.blue.opacity(0.5))
+                        .foregroundColor(AppColors.accent.opacity(0.5))
                         .frame(width: itemWidth, height: itemHeight)
                 } else {
                     thumbnailImage
@@ -287,7 +287,7 @@ struct PageCellContainer: View {
             // Use transaction to disable animation on text changes to prevent duplicates
             Text("\(displayIndex)")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(isBeingDragged ? .blue.opacity(0.5) : .blue)
+                .foregroundColor(isBeingDragged ? AppColors.accent.opacity(0.5) : AppColors.accent)
                 .transaction { transaction in
                     transaction.animation = nil
                 }
@@ -343,11 +343,11 @@ struct PageCellContainer: View {
                     .fill(Color.white)
                     .frame(width: 26, height: 26)
                 Circle()
-                    .strokeBorder(Color.blue, lineWidth: 1.5)
+                    .strokeBorder(AppColors.accent, lineWidth: 1.5)
                     .frame(width: 26, height: 26)
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.blue)
+                    .foregroundColor(AppColors.accent)
             }
         }
         .offset(x: -8, y: -8)

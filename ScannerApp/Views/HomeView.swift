@@ -60,23 +60,26 @@ struct HomeView: View {
                     }
                 }
 
-                // Floating scan button
+                // Full-width scan button
                 VStack {
                     Spacer()
 
                     Button(action: onStartScanning) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.blue)
-                                .frame(width: 64, height: 64)
-                                .shadow(color: .blue.opacity(0.4), radius: 8, x: 0, y: 4)
-
+                        HStack(spacing: 10) {
                             Image(systemName: "doc.viewfinder")
-                                .font(.title2)
-                                .foregroundColor(.white)
+                                .font(.system(size: 22, weight: .semibold))
+                            Text("Just Scan It")
+                                .font(.system(size: 18, weight: .bold))
                         }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(AppColors.accent)
+                        .cornerRadius(16)
+                        .shadow(color: AppColors.accent.opacity(0.4), radius: 10, x: 0, y: 5)
                     }
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Scans")
