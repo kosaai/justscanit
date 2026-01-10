@@ -96,15 +96,14 @@ struct DocumentDetailView: View {
                     PageCarouselView(
                         pages: document.pages,
                         currentPageIndex: $currentPageIndex,
-                        pageWidth: geometry.size.width - 48,
-                        spacing: 12
+                        pageWidth: geometry.size.width - 80,
+                        spacing: 12,
+                        onTapBackground: {
+                            if isEditingName {
+                                finishEditingName()
+                            }
+                        }
                     )
-                }
-                .onTapGesture {
-                    // Dismiss keyboard and apply name edit when tapping on carousel area
-                    if isEditingName {
-                        finishEditingName()
-                    }
                 }
 
                 bottomControls
@@ -131,7 +130,10 @@ struct DocumentDetailView: View {
 
             // Left and right buttons
             HStack {
-                Button(action: onBackToScanning) {
+                Button(action: {
+                    if isEditingName { finishEditingName() }
+                    onBackToScanning()
+                }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 18, weight: .medium))
@@ -145,6 +147,7 @@ struct DocumentDetailView: View {
 
                 if document.pages.count >= 2 {
                     Button(action: {
+                        if isEditingName { finishEditingName() }
                         withAnimation(.easeInOut(duration: 0.3)) {
                             showReorderView = true
                         }
@@ -158,6 +161,10 @@ struct DocumentDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isEditingName { finishEditingName() }
+        }
     }
 
     // MARK: - Bottom Controls
@@ -186,6 +193,7 @@ struct DocumentDetailView: View {
                 Spacer()
 
                 Button(action: {
+                    if isEditingName { finishEditingName() }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         exportType = exportType == .pdf ? .images : .pdf
                     }
@@ -402,6 +410,7 @@ struct PageCarouselView: View {
     @Binding var currentPageIndex: Int
     let pageWidth: CGFloat
     let spacing: CGFloat
+    var onTapBackground: (() -> Void)? = nil
 
     @State private var dragOffset: CGFloat = 0
 
@@ -414,36 +423,45 @@ struct PageCarouselView: View {
         GeometryReader { geometry in
             let horizontalPadding = (geometry.size.width - pageWidth) / 2
 
-            HStack(alignment: .center, spacing: spacing) {
-                ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
-                    PageItemView(page: page, width: pageWidth)
-                        .frame(height: geometry.size.height)
+            ZStack {
+                // Background to catch taps
+                Color.black
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onTapBackground?()
+                    }
+
+                HStack(alignment: .center, spacing: spacing) {
+                    ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
+                        PageItemView(page: page, width: pageWidth)
+                            .frame(height: geometry.size.height)
+                    }
                 }
+                .padding(.horizontal, horizontalPadding)
+                .offset(x: totalOffset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            dragOffset = value.translation.width
+                        }
+                        .onEnded { value in
+                            let pageWithSpacing = pageWidth + spacing
+                            let threshold = pageWidth / 3
+                            var newIndex = currentPageIndex
+
+                            if value.translation.width < -threshold {
+                                newIndex = min(currentPageIndex + 1, pages.count - 1)
+                            } else if value.translation.width > threshold {
+                                newIndex = max(currentPageIndex - 1, 0)
+                            }
+
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                currentPageIndex = newIndex
+                                dragOffset = 0
+                            }
+                        }
+                )
             }
-            .padding(.horizontal, horizontalPadding)
-            .offset(x: totalOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = value.translation.width
-                    }
-                    .onEnded { value in
-                        let pageWithSpacing = pageWidth + spacing
-                        let threshold = pageWidth / 3
-                        var newIndex = currentPageIndex
-
-                        if value.translation.width < -threshold {
-                            newIndex = min(currentPageIndex + 1, pages.count - 1)
-                        } else if value.translation.width > threshold {
-                            newIndex = max(currentPageIndex - 1, 0)
-                        }
-
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            currentPageIndex = newIndex
-                            dragOffset = 0
-                        }
-                    }
-            )
         }
     }
 }
