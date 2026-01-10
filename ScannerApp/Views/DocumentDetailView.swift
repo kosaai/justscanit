@@ -117,35 +117,38 @@ struct DocumentDetailView: View {
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack {
-            Button(action: onBackToScanning) {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .medium))
-                    Text("Scan")
-                        .font(.system(size: 17))
-                }
-                .foregroundColor(.white)
-            }
-
-            Spacer()
-
+        ZStack {
+            // Center: Page indicator (always truly centered)
             Text("\(currentPageIndex + 1)/\(document.pages.count)")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundColor(.white)
 
-            Spacer()
-
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    showReorderView = true
-                }
-            }) {
-                Text("Reorder")
-                    .font(.system(size: 17))
+            // Left and right buttons
+            HStack {
+                Button(action: onBackToScanning) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
+                        Text("Scan")
+                            .font(.system(size: 17))
+                    }
                     .foregroundColor(.white)
+                }
+
+                Spacer()
+
+                if document.pages.count >= 2 {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            showReorderView = true
+                        }
+                    }) {
+                        Text("Reorder")
+                            .font(.system(size: 17))
+                            .foregroundColor(.white)
+                    }
+                }
             }
-            .disabled(document.pages.count < 2)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)

@@ -10,6 +10,7 @@ struct ReorderPagesView: View {
     @State private var reorderedPages: [ScannedPage] = []
     @State private var draggedPageId: UUID?
     @State private var currentDragPosition: CGPoint = .zero
+    @State private var dragOffset: CGPoint = .zero  // Offset from finger to overlay center
     @State private var isDragging = false
     @State private var isLongPressActive = false  // Track when long press recognized
     @State private var showDeleteConfirm = false
@@ -127,12 +128,12 @@ struct ReorderPagesView: View {
                         pageToDelete = page
                         showDeleteConfirm = true
                     },
-                    onLongPressStart: { location in
-                        startLongPress(page: page, at: location, itemWidth: itemWidth, itemHeight: itemHeight, screenWidth: screenWidth, index: index)
+                    onLongPressStart: {
+                        startLongPress(page: page, itemWidth: itemWidth, itemHeight: itemHeight, index: index)
                     },
-                    onDragChanged: { location in
+                    onDragChanged: { location, startLocation in
                         if draggedPageId == page.id {
-                            handleDrag(location: location, itemWidth: itemWidth, itemHeight: itemHeight)
+                            handleDrag(location: location, startLocation: startLocation, itemWidth: itemWidth, itemHeight: itemHeight, index: index)
                         }
                     },
                     onDragEnded: {
@@ -188,25 +189,45 @@ struct ReorderPagesView: View {
 
     // MARK: - Drag Handling
 
-    private func startLongPress(page: ScannedPage, at location: CGPoint, itemWidth: CGFloat, itemHeight: CGFloat, screenWidth: CGFloat, index: Int) {
+    private func startLongPress(page: ScannedPage, itemWidth: CGFloat, itemHeight: CGFloat, index: Int) {
         // Calculate the center position of the thumbnail for initial overlay position
         let center = thumbnailCenter(for: index, itemWidth: itemWidth, itemHeight: itemHeight)
-        // Adjust for the top bar and scroll view offset (approximate)
+        // Adjust for the top bar offset
         let adjustedCenter = CGPoint(x: center.x, y: center.y + 56)
 
         draggedPageId = page.id
         isLongPressActive = true
+        isDragging = false  // Reset - will be set true on first drag event
         currentDragPosition = adjustedCenter
+        dragOffset = .zero  // Will be calculated on first drag event
     }
 
-    private func handleDrag(location: CGPoint, itemWidth: CGFloat, itemHeight: CGFloat) {
-        isDragging = true
-        currentDragPosition = location
+    private func handleDrag(location: CGPoint, startLocation: CGPoint, itemWidth: CGFloat, itemHeight: CGFloat, index: Int) {
+        // On first drag event, calculate the offset between finger and thumbnail center
+        if !isDragging {
+            isDragging = true
+            // Offset = where finger started - where thumbnail center is
+            // This offset stays constant throughout the drag
+            dragOffset = CGPoint(
+                x: startLocation.x - currentDragPosition.x,
+                y: startLocation.y - currentDragPosition.y
+            )
+        }
 
+        // Calculate overlay position: finger position minus the offset
+        // This keeps the thumbnail at the same relative position under the finger
+        let overlayPosition = CGPoint(
+            x: location.x - dragOffset.x,
+            y: location.y - dragOffset.y
+        )
+        currentDragPosition = overlayPosition
+
+        // Use overlay position (not finger position) for reorder detection
+        // This keeps overlay visuals and reorder logic in sync
         guard let draggedId = draggedPageId,
               let currentIndex = reorderedPages.firstIndex(where: { $0.id == draggedId }) else { return }
 
-        if let targetIndex = indexAtPosition(location, itemWidth: itemWidth, itemHeight: itemHeight),
+        if let targetIndex = indexAtPosition(overlayPosition, itemWidth: itemWidth, itemHeight: itemHeight),
            targetIndex != currentIndex {
             withAnimation(.easeInOut(duration: reorderAnimationDuration)) {
                 reorderedPages.move(
@@ -234,8 +255,8 @@ struct PageCellContainer: View {
     let isBeingDragged: Bool
     let isAnyDragging: Bool
     let onDelete: () -> Void
-    let onLongPressStart: (CGPoint) -> Void
-    let onDragChanged: (CGPoint) -> Void
+    let onLongPressStart: () -> Void
+    let onDragChanged: (CGPoint, CGPoint) -> Void  // (location, startLocation)
     let onDragEnded: () -> Void
 
     @State private var hasStartedLongPress = false
@@ -279,13 +300,13 @@ struct PageCellContainer: View {
                 .onEnded { _ in
                     // Long press completed - start drag mode
                     hasStartedLongPress = true
-                    onLongPressStart(.zero)
+                    onLongPressStart()
                 }
                 .simultaneously(with:
                     DragGesture(coordinateSpace: .global)
                         .onChanged { value in
                             if hasStartedLongPress {
-                                onDragChanged(value.location)
+                                onDragChanged(value.location, value.startLocation)
                             }
                         }
                         .onEnded { _ in
