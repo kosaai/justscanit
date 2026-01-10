@@ -110,6 +110,7 @@ struct CropView: View {
                             CropMagnifierView(
                                 image: originalImage,
                                 focusPoint: magnifierPosition,
+                                corners: corners,
                                 imageFrame: imageFrame,
                                 size: magnifierSize,
                                 zoom: magnifierZoom
@@ -424,6 +425,7 @@ struct CropMaskView: View {
 struct CropMagnifierView: View {
     let image: UIImage
     let focusPoint: CGPoint
+    let corners: [CGPoint]
     let imageFrame: CGRect
     let size: CGFloat
     let zoom: CGFloat
@@ -451,6 +453,16 @@ struct CropMagnifierView: View {
         let offsetX = (0.5 - clampedRelX) * zoomedWidth
         let offsetY = (0.5 - clampedRelY) * zoomedHeight
 
+        // Transform corners to magnifier coordinate space
+        let magnifierCorners = corners.map { corner -> CGPoint in
+            let cornerRelX = (corner.x - imageFrame.origin.x) / imageFrame.width
+            let cornerRelY = (corner.y - imageFrame.origin.y) / imageFrame.height
+            // Position relative to focus point, scaled by zoom, centered in magnifier
+            let magX = size / 2 + (cornerRelX - clampedRelX) * zoomedWidth
+            let magY = size / 2 + (cornerRelY - clampedRelY) * zoomedHeight
+            return CGPoint(x: magX, y: magY)
+        }
+
         ZStack {
             // Zoomed image portion
             Image(uiImage: image)
@@ -458,7 +470,17 @@ struct CropMagnifierView: View {
                 .frame(width: zoomedWidth, height: zoomedHeight)
                 .offset(x: offsetX, y: offsetY)
                 .frame(width: size, height: size)
-                .clipShape(Circle())
+                .clipped()
+
+            // Dark overlay outside crop area (in magnifier)
+            if magnifierCorners.count >= 4 {
+                MagnifierMaskView(corners: magnifierCorners, size: size)
+            }
+
+            // Blue crop border lines (in magnifier)
+            if magnifierCorners.count >= 4 {
+                MagnifierCropBorderView(corners: magnifierCorners, size: size)
+            }
 
             // Crosshair
             Path { path in
@@ -486,7 +508,64 @@ struct CropMagnifierView: View {
                 .stroke(Color.white, lineWidth: 3)
                 .frame(width: size, height: size)
         }
+        .clipShape(Circle())
         .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 5)
         .position(displayPosition)
+    }
+}
+
+// MARK: - Magnifier Mask (Darkened area outside crop in magnifier)
+
+struct MagnifierMaskView: View {
+    let corners: [CGPoint]
+    let size: CGFloat
+
+    var body: some View {
+        Canvas { context, canvasSize in
+            // Create full circle path
+            let circlePath = Path(ellipseIn: CGRect(origin: .zero, size: canvasSize))
+
+            // Create crop quadrilateral path
+            var cropPath = Path()
+            cropPath.move(to: corners[0])
+            for i in 1..<corners.count {
+                cropPath.addLine(to: corners[i])
+            }
+            cropPath.closeSubpath()
+
+            // Fill the circle with semi-transparent dark
+            context.fill(circlePath, with: .color(.black.opacity(0.4)))
+
+            // Cut out the crop area
+            context.blendMode = .destinationOut
+            context.fill(cropPath, with: .color(.black))
+        }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Magnifier Crop Border (Blue edges in magnifier)
+
+struct MagnifierCropBorderView: View {
+    let corners: [CGPoint]
+    let size: CGFloat
+
+    var body: some View {
+        Canvas { context, canvasSize in
+            guard corners.count >= 4 else { return }
+
+            // Draw the crop border
+            var path = Path()
+            path.move(to: corners[0])
+            for i in 1..<corners.count {
+                path.addLine(to: corners[i])
+            }
+            path.closeSubpath()
+
+            context.stroke(path, with: .color(.cyan), lineWidth: 3)
+        }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
     }
 }
