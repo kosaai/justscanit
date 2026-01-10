@@ -33,6 +33,10 @@ struct DocumentDetailView: View {
     @State private var shareableContent: ShareableContent?
     @State private var isGeneratingShare = false
     @State private var showReorderView = false
+    @State private var showAdjustmentToolbar = false
+    @State private var showCropView = false
+    @State private var showDeleteConfirmation = false
+    @State private var isProcessingAdjustment = false
 
     @FocusState private var isNameFieldFocused: Bool
 
@@ -86,8 +90,25 @@ struct DocumentDetailView: View {
         }) { content in
             ActivityViewControllerRepresentable(items: content.items)
         }
+        .alert("Delete Page?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteCurrentPage()
+            }
+        } message: {
+            Text("This page will be permanently removed from the document.")
+        }
         .onAppear {
             editedName = document.name
+        }
+        .overlay {
+            // Adjustment toolbar
+            if showAdjustmentToolbar && !showCropView {
+                adjustmentToolbarOverlay
+            }
+        }
+        .fullScreenCover(isPresented: $showCropView) {
+            cropViewContent
         }
     }
 
@@ -110,6 +131,9 @@ struct DocumentDetailView: View {
                             if isEditingName {
                                 finishEditingName()
                             }
+                        },
+                        onAdjust: {
+                            showAdjustments()
                         }
                     )
                 }
@@ -117,7 +141,7 @@ struct DocumentDetailView: View {
                 bottomControls
             }
 
-            if isGeneratingShare {
+            if isGeneratingShare || isProcessingAdjustment {
                 Color.black.opacity(0.5)
                     .ignoresSafeArea()
                 ProgressView()
@@ -377,6 +401,246 @@ struct DocumentDetailView: View {
 
         shareableContent = ShareableContent(items: images)
     }
+
+    // MARK: - Adjustment Toolbar
+
+    private var currentPage: ScannedPage? {
+        guard currentPageIndex < document.pages.count else { return nil }
+        return document.pages[currentPageIndex]
+    }
+
+    private var isCurrentPageEnhanced: Bool {
+        currentPage?.filterMode != .original
+    }
+
+    private var adjustmentToolbarOverlay: some View {
+        VStack {
+            Spacer()
+
+            // Tap outside to dismiss
+            Color.black.opacity(0.001)
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showAdjustmentToolbar = false
+                    }
+                }
+
+            PageAdjustmentToolbar(
+                isEnhanced: isCurrentPageEnhanced,
+                onDelete: {
+                    showDeleteConfirmation = true
+                },
+                onRotate: {
+                    rotateCurrentPage()
+                },
+                onCrop: {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showAdjustmentToolbar = false
+                    }
+                    showCropView = true
+                },
+                onRestoreEnhance: {
+                    toggleEnhanceCurrentPage()
+                }
+            )
+            .transition(.move(edge: .bottom))
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    @ViewBuilder
+    private var cropViewContent: some View {
+        if let page = currentPage,
+           let originalImage = DocumentStorage.shared.loadImage(filename: page.originalImagePath) {
+            CropView(
+                originalImage: originalImage,
+                initialCorners: page.corners,
+                onCancel: {
+                    showCropView = false
+                },
+                onApply: { newCorners in
+                    applyCrop(corners: newCorners)
+                    showCropView = false
+                }
+            )
+        }
+    }
+
+    private func showAdjustments() {
+        if isEditingName { finishEditingName() }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showAdjustmentToolbar.toggle()
+        }
+    }
+
+    private func deleteCurrentPage() {
+        guard currentPageIndex < document.pages.count else { return }
+        let page = document.pages[currentPageIndex]
+        deletePage(id: page.id)
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showAdjustmentToolbar = false
+        }
+    }
+
+    private func rotateCurrentPage() {
+        guard currentPageIndex < document.pages.count else { return }
+        isProcessingAdjustment = true
+
+        let pageIndex = currentPageIndex
+        let page = document.pages[pageIndex]
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            autoreleasepool {
+                // Load the cropped/display image (or original if no cropped)
+                let imagePath = page.croppedImagePath ?? page.originalImagePath
+                guard let image = DocumentStorage.shared.loadImage(filename: imagePath),
+                      let rotatedImage = ImageProcessor.shared.rotateImage(image, clockwise: true) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Save rotated image
+                let newId = UUID()
+                guard let newPath = DocumentStorage.shared.saveImage(rotatedImage, for: newId) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Delete old cropped image if it exists
+                if let oldCropped = page.croppedImagePath {
+                    DocumentStorage.shared.deleteImage(filename: oldCropped)
+                }
+
+                DispatchQueue.main.async {
+                    // Update page with new image path and clear corners (they're no longer valid)
+                    self.document.pages[pageIndex].croppedImagePath = newPath
+                    self.document.pages[pageIndex].corners = nil
+                    self.document.modifiedAt = Date()
+                    DocumentStorage.shared.updateDocument(self.document)
+                    self.isProcessingAdjustment = false
+                }
+            }
+        }
+    }
+
+    private func toggleEnhanceCurrentPage() {
+        guard currentPageIndex < document.pages.count else { return }
+        isProcessingAdjustment = true
+
+        let pageIndex = currentPageIndex
+        let page = document.pages[pageIndex]
+        let newFilterMode: FilterMode = page.filterMode == .original ? .autoColor : .original
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            autoreleasepool {
+                // Load original image
+                guard let originalImage = DocumentStorage.shared.loadImage(filename: page.originalImagePath) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Apply crop if corners exist
+                var baseImage = originalImage
+                if let corners = page.corners {
+                    if let cropped = ImageProcessor.shared.correctPerspective(originalImage, corners: corners) {
+                        baseImage = cropped
+                    }
+                }
+
+                // Apply new filter
+                let processedImage = ImageProcessor.shared.processImage(
+                    baseImage,
+                    filterMode: newFilterMode,
+                    adjustments: page.adjustments
+                ) ?? baseImage
+
+                // Save processed image
+                let newId = UUID()
+                guard let newPath = DocumentStorage.shared.saveImage(processedImage, for: newId) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Delete old cropped image
+                if let oldCropped = page.croppedImagePath {
+                    DocumentStorage.shared.deleteImage(filename: oldCropped)
+                }
+
+                DispatchQueue.main.async {
+                    self.document.pages[pageIndex].croppedImagePath = newPath
+                    self.document.pages[pageIndex].filterMode = newFilterMode
+                    self.document.modifiedAt = Date()
+                    DocumentStorage.shared.updateDocument(self.document)
+                    self.isProcessingAdjustment = false
+                }
+            }
+        }
+    }
+
+    private func applyCrop(corners: [CGPoint]) {
+        guard currentPageIndex < document.pages.count else { return }
+        isProcessingAdjustment = true
+
+        let pageIndex = currentPageIndex
+        let page = document.pages[pageIndex]
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            autoreleasepool {
+                // Load original image
+                guard let originalImage = DocumentStorage.shared.loadImage(filename: page.originalImagePath) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Apply perspective correction
+                guard let cropped = ImageProcessor.shared.correctPerspective(originalImage, corners: corners) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Apply current filter
+                let processedImage = ImageProcessor.shared.processImage(
+                    cropped,
+                    filterMode: page.filterMode,
+                    adjustments: page.adjustments
+                ) ?? cropped
+
+                // Save processed image
+                let newId = UUID()
+                guard let newPath = DocumentStorage.shared.saveImage(processedImage, for: newId) else {
+                    DispatchQueue.main.async {
+                        self.isProcessingAdjustment = false
+                    }
+                    return
+                }
+
+                // Delete old cropped image
+                if let oldCropped = page.croppedImagePath {
+                    DocumentStorage.shared.deleteImage(filename: oldCropped)
+                }
+
+                DispatchQueue.main.async {
+                    self.document.pages[pageIndex].croppedImagePath = newPath
+                    self.document.pages[pageIndex].corners = corners
+                    self.document.modifiedAt = Date()
+                    DocumentStorage.shared.updateDocument(self.document)
+                    self.isProcessingAdjustment = false
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Share Errors
@@ -421,6 +685,7 @@ struct PageCarouselView: View {
     let pageWidth: CGFloat
     let spacing: CGFloat
     var onTapBackground: (() -> Void)? = nil
+    var onAdjust: (() -> Void)? = nil
 
     @State private var dragOffset: CGFloat = 0
 
@@ -443,7 +708,7 @@ struct PageCarouselView: View {
 
                 HStack(alignment: .center, spacing: spacing) {
                     ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
-                        PageItemView(page: page, width: pageWidth)
+                        PageItemView(page: page, width: pageWidth, onAdjust: onAdjust)
                             .frame(height: geometry.size.height)
                     }
                 }
@@ -479,6 +744,7 @@ struct PageCarouselView: View {
 struct PageItemView: View {
     let page: ScannedPage
     let width: CGFloat
+    var onAdjust: (() -> Void)? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -487,7 +753,8 @@ struct PageItemView: View {
                 PageImageContent(
                     image: image,
                     width: width,
-                    availableHeight: geometry.size.height
+                    availableHeight: geometry.size.height,
+                    onAdjust: onAdjust
                 )
             }
         }
@@ -499,6 +766,7 @@ struct PageImageContent: View {
     let image: UIImage
     let width: CGFloat
     let availableHeight: CGFloat
+    var onAdjust: (() -> Void)? = nil
 
     private var imageAspect: CGFloat {
         image.size.width / image.size.height
@@ -527,7 +795,7 @@ struct PageImageContent: View {
 
             // Adjustment button inside bottom-right
             Button(action: {
-                // TODO: Implement adjustments
+                onAdjust?()
             }) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 16))

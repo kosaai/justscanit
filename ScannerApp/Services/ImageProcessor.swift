@@ -262,6 +262,36 @@ class ImageProcessor {
             moveTowardCenter(bottomLeft)
         ]
     }
+
+    // MARK: - Rotation
+
+    func rotateImage(_ image: UIImage, clockwise: Bool = true) -> UIImage? {
+        return autoreleasepool {
+            guard let cgImage = image.cgImage else { return nil }
+
+            let rotatedSize = CGSize(width: image.size.height, height: image.size.width)
+
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+
+            let renderer = UIGraphicsImageRenderer(size: rotatedSize, format: format)
+            return renderer.image { context in
+                let ctx = context.cgContext
+
+                // Move to center, rotate, then draw
+                ctx.translateBy(x: rotatedSize.width / 2, y: rotatedSize.height / 2)
+
+                if clockwise {
+                    ctx.rotate(by: .pi / 2)
+                } else {
+                    ctx.rotate(by: -.pi / 2)
+                }
+
+                ctx.translateBy(x: -image.size.width / 2, y: -image.size.height / 2)
+                ctx.draw(cgImage, in: CGRect(origin: .zero, size: image.size))
+            }
+        }
+    }
 }
 
 // Import Vision for VNRectangleObservation
