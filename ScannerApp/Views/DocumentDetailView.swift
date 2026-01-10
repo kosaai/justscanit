@@ -50,14 +50,17 @@ struct DocumentDetailView: View {
 
     var body: some View {
         ZStack {
-            // Main detail view
-            if !showReorderView {
+            // Background (always present)
+            Color.black.ignoresSafeArea()
+
+            // Main detail view (guard against empty pages during deletion transition)
+            if !showReorderView && !document.pages.isEmpty {
                 detailContent
                     .transition(.opacity)
             }
 
-            // Reorder view
-            if showReorderView {
+            // Reorder view (also guard against empty pages)
+            if showReorderView && !document.pages.isEmpty {
                 ReorderPagesView(
                     pages: document.pages,
                     onDone: { reorderedPages in
@@ -300,9 +303,9 @@ struct DocumentDetailView: View {
 
         // Update storage
         if document.pages.isEmpty {
-            // If no pages left, go back
+            // If no pages left, delete document and go back to scanner
             DocumentStorage.shared.deleteDocument(document)
-            onDismiss()
+            onBackToScanning()
         } else {
             DocumentStorage.shared.updateDocument(document)
             // Adjust current page index if needed
@@ -537,28 +540,36 @@ struct DocumentDetailView: View {
 
         DispatchQueue.global(qos: .userInitiated).async {
             autoreleasepool {
-                // Load original image
-                guard let originalImage = DocumentStorage.shared.loadImage(filename: page.originalImagePath) else {
+                var baseImage: UIImage?
+
+                // If we have corners, we can re-derive the crop from the original
+                if let corners = page.corners {
+                    if let originalImage = DocumentStorage.shared.loadImage(filename: page.originalImagePath) {
+                        baseImage = ImageProcessor.shared.correctPerspective(originalImage, corners: corners) ?? originalImage
+                    }
+                }
+                // Otherwise, use the existing cropped image (e.g., after rotation when corners are cleared)
+                else if let croppedPath = page.croppedImagePath {
+                    baseImage = DocumentStorage.shared.loadImage(filename: croppedPath)
+                }
+                // Last resort: use original image
+                else {
+                    baseImage = DocumentStorage.shared.loadImage(filename: page.originalImagePath)
+                }
+
+                guard let imageToProcess = baseImage else {
                     DispatchQueue.main.async {
                         self.isProcessingAdjustment = false
                     }
                     return
                 }
 
-                // Apply crop if corners exist
-                var baseImage = originalImage
-                if let corners = page.corners {
-                    if let cropped = ImageProcessor.shared.correctPerspective(originalImage, corners: corners) {
-                        baseImage = cropped
-                    }
-                }
-
                 // Apply new filter
                 let processedImage = ImageProcessor.shared.processImage(
-                    baseImage,
+                    imageToProcess,
                     filterMode: newFilterMode,
                     adjustments: page.adjustments
-                ) ?? baseImage
+                ) ?? imageToProcess
 
                 // Save processed image
                 let newId = UUID()

@@ -267,28 +267,28 @@ class ImageProcessor {
 
     func rotateImage(_ image: UIImage, clockwise: Bool = true) -> UIImage? {
         return autoreleasepool {
-            guard let cgImage = image.cgImage else { return nil }
-
             let rotatedSize = CGSize(width: image.size.height, height: image.size.width)
 
             let format = UIGraphicsImageRendererFormat()
             format.scale = image.scale
 
             let renderer = UIGraphicsImageRenderer(size: rotatedSize, format: format)
-            return renderer.image { context in
-                let ctx = context.cgContext
+            return renderer.image { _ in
+                guard let context = UIGraphicsGetCurrentContext() else { return }
 
-                // Move to center, rotate, then draw
-                ctx.translateBy(x: rotatedSize.width / 2, y: rotatedSize.height / 2)
+                // Move origin to center of rotated canvas
+                context.translateBy(x: rotatedSize.width / 2, y: rotatedSize.height / 2)
 
-                if clockwise {
-                    ctx.rotate(by: .pi / 2)
-                } else {
-                    ctx.rotate(by: -.pi / 2)
-                }
+                // Rotate - in UIKit coordinates (Y down), positive angle is clockwise
+                context.rotate(by: clockwise ? .pi / 2 : -.pi / 2)
 
-                ctx.translateBy(x: -image.size.width / 2, y: -image.size.height / 2)
-                ctx.draw(cgImage, in: CGRect(origin: .zero, size: image.size))
+                // Draw image centered at origin using UIImage.draw which handles orientation correctly
+                image.draw(in: CGRect(
+                    x: -image.size.width / 2,
+                    y: -image.size.height / 2,
+                    width: image.size.width,
+                    height: image.size.height
+                ))
             }
         }
     }
