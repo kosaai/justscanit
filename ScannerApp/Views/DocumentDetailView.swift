@@ -36,6 +36,14 @@ struct DocumentDetailView: View {
 
     @FocusState private var isNameFieldFocused: Bool
 
+    private var saveButtonTitle: String {
+        if exportType == .pdf {
+            return "Save PDF"
+        } else {
+            return document.pages.count == 1 ? "Save Image" : "Save Images"
+        }
+    }
+
     var body: some View {
         ZStack {
             // Main detail view
@@ -201,11 +209,12 @@ struct DocumentDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: exportType == .pdf ? "doc.fill" : "photo.fill")
                             .font(.system(size: 14))
+                            .frame(width: 14, height: 14)
                         Text(exportType == .pdf ? "PDF" : "Images")
                             .font(.system(size: 14, weight: .medium))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 12)
+                    .frame(width: 80)
                     .padding(.vertical, 6)
                     .background(Color.gray.opacity(0.4))
                     .cornerRadius(16)
@@ -217,11 +226,12 @@ struct DocumentDetailView: View {
                 HStack {
                     Image(systemName: exportType == .pdf ? "doc.fill" : "photo.fill")
                         .font(.system(size: 18))
-                    Text(exportType == .pdf ? "Save PDF" : "Save Image(s)")
+                        .frame(width: 20, height: 20)
+                    Text(saveButtonTitle)
                         .font(.system(size: 17, weight: .semibold))
                 }
                 .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 24)
                 .padding(.vertical, 14)
                 .background(Color.blue)
                 .cornerRadius(12)
