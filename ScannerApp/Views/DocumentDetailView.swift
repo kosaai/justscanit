@@ -719,7 +719,7 @@ struct PageCarouselView: View {
 
                 HStack(alignment: .center, spacing: spacing) {
                     ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
-                        PageItemView(page: page, width: pageWidth, onAdjust: onAdjust)
+                        PageItemView(page: page, width: pageWidth, onTap: onTapBackground, onAdjust: onAdjust)
                             .frame(height: geometry.size.height)
                     }
                 }
@@ -755,6 +755,7 @@ struct PageCarouselView: View {
 struct PageItemView: View {
     let page: ScannedPage
     let width: CGFloat
+    var onTap: (() -> Void)? = nil
     var onAdjust: (() -> Void)? = nil
 
     var body: some View {
@@ -765,6 +766,7 @@ struct PageItemView: View {
                     image: image,
                     width: width,
                     availableHeight: geometry.size.height,
+                    onTap: onTap,
                     onAdjust: onAdjust
                 )
             }
@@ -777,6 +779,7 @@ struct PageImageContent: View {
     let image: UIImage
     let width: CGFloat
     let availableHeight: CGFloat
+    var onTap: (() -> Void)? = nil
     var onAdjust: (() -> Void)? = nil
 
     private var imageAspect: CGFloat {
@@ -803,6 +806,10 @@ struct PageImageContent: View {
                 .frame(width: imageWidth, height: imageHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .onTapGesture {
+                    onTap?()
+                }
 
             // Adjustment button inside bottom-right
             Button(action: {

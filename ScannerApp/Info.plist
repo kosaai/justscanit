@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Scanner</string>
+    <string>Just Scan It</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -54,12 +54,12 @@
 
     <!-- Camera Permission -->
     <key>NSCameraUsageDescription</key>
-    <string>Scanner needs camera access to scan documents</string>
+    <string>Just Scan It needs camera access to scan documents</string>
 
     <!-- Photo Library Permissions -->
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>Scanner needs permission to save scanned documents to your photo library</string>
+    <string>Just Scan It needs permission to save scanned documents to your photo library</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Scanner needs permission to access your photo library</string>
+    <string>Just Scan It needs permission to access your photo library</string>
 </dict>
 </plist>
