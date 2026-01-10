@@ -9,9 +9,9 @@ struct ReorderPagesView: View {
 
     @State private var reorderedPages: [ScannedPage] = []
     @State private var draggedPageId: UUID?
-    @State private var dragStartPosition: CGPoint = .zero
     @State private var currentDragPosition: CGPoint = .zero
     @State private var isDragging = false
+    @State private var isLongPressActive = false  // Track when long press recognized
     @State private var showDeleteConfirm = false
     @State private var pageToDelete: ScannedPage?
 
@@ -21,10 +21,14 @@ struct ReorderPagesView: View {
     private let verticalSpacing: CGFloat = 40
     private let topPadding: CGFloat = 20
 
-    // Slight offset when picking up to show it's lifted
-    private let pickupOffset = CGSize(width: 12, height: -12)
+    // Long press duration (100ms - quick response)
+    private let longPressDuration: Double = 0.1
 
-    // Animation duration for grid reordering (slower = smoother feel)
+    // Scale when picked up (1.1x), pulsates to 1.15x
+    private let pickedUpScale: CGFloat = 1.1
+    private let pulseMaxScale: CGFloat = 1.15
+
+    // Animation duration for grid reordering
     private let reorderAnimationDuration: Double = 0.35
 
     var body: some View {
@@ -41,21 +45,20 @@ struct ReorderPagesView: View {
                     Divider()
 
                     ScrollView {
-                        gridContent(itemWidth: itemWidth, itemHeight: itemHeight)
+                        gridContent(itemWidth: itemWidth, itemHeight: itemHeight, screenWidth: geometry.size.width)
                     }
                 }
 
-                // Dragged item overlay - follows finger exactly
-                if isDragging, let draggedId = draggedPageId,
+                // Dragged item overlay - shows when long press is active
+                if isLongPressActive, let draggedId = draggedPageId,
                    let page = reorderedPages.first(where: { $0.id == draggedId }) {
                     DraggedPageOverlay(
                         page: page,
                         itemWidth: itemWidth,
                         itemHeight: itemHeight,
-                        position: CGPoint(
-                            x: currentDragPosition.x + pickupOffset.width,
-                            y: currentDragPosition.y + pickupOffset.height
-                        )
+                        position: currentDragPosition,
+                        baseScale: pickedUpScale,
+                        maxScale: pulseMaxScale
                     )
                 }
             }
@@ -66,9 +69,7 @@ struct ReorderPagesView: View {
             }
             Button("Delete", role: .destructive) {
                 if let page = pageToDelete {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        reorderedPages.removeAll { $0.id == page.id }
-                    }
+                    reorderedPages.removeAll { $0.id == page.id }
                     onDeletePage(page.id)
                 }
                 pageToDelete = nil
@@ -109,64 +110,40 @@ struct ReorderPagesView: View {
 
     // MARK: - Grid Content
 
-    private func gridContent(itemWidth: CGFloat, itemHeight: CGFloat) -> some View {
+    private func gridContent(itemWidth: CGFloat, itemHeight: CGFloat, screenWidth: CGFloat) -> some View {
         LazyVGrid(
             columns: Array(repeating: GridItem(.fixed(itemWidth), spacing: spacing), count: columns),
             spacing: verticalSpacing
         ) {
             ForEach(Array(reorderedPages.enumerated()), id: \.element.id) { index, page in
-                pageCellWithGestures(page: page, index: index, itemWidth: itemWidth, itemHeight: itemHeight)
+                PageCellContainer(
+                    page: page,
+                    displayIndex: index + 1,
+                    itemWidth: itemWidth,
+                    itemHeight: itemHeight,
+                    isBeingDragged: draggedPageId == page.id && isLongPressActive,
+                    isAnyDragging: isLongPressActive,
+                    onDelete: {
+                        pageToDelete = page
+                        showDeleteConfirm = true
+                    },
+                    onLongPressStart: { location in
+                        startLongPress(page: page, at: location, itemWidth: itemWidth, itemHeight: itemHeight, screenWidth: screenWidth, index: index)
+                    },
+                    onDragChanged: { location in
+                        if draggedPageId == page.id {
+                            handleDrag(location: location, itemWidth: itemWidth, itemHeight: itemHeight)
+                        }
+                    },
+                    onDragEnded: {
+                        endDrag()
+                    }
+                )
             }
         }
         .padding(.horizontal, horizontalPadding)
         .padding(.top, topPadding)
         .padding(.bottom, 40)
-    }
-
-    private func pageCellWithGestures(page: ScannedPage, index: Int, itemWidth: CGFloat, itemHeight: CGFloat) -> some View {
-        PageCell(
-            page: page,
-            index: index,
-            itemWidth: itemWidth,
-            itemHeight: itemHeight,
-            isBeingDragged: draggedPageId == page.id,
-            isAnyDragging: isDragging,
-            onDelete: {
-                pageToDelete = page
-                showDeleteConfirm = true
-            }
-        )
-        .animation(.easeInOut(duration: reorderAnimationDuration), value: reorderedPages.map { $0.id })
-        .gesture(
-            LongPressGesture(minimumDuration: 0.2)
-                .sequenced(before: DragGesture(coordinateSpace: .global))
-                .onChanged { value in
-                    switch value {
-                    case .first(true):
-                        // Long press recognized - prepare for drag
-                        break
-                    case .second(true, let drag):
-                        if let drag = drag {
-                            if !isDragging {
-                                // Start drag
-                                startDrag(page: page, at: drag.location)
-                            } else if draggedPageId == page.id {
-                                // Continue drag
-                                handleDrag(
-                                    location: drag.location,
-                                    itemWidth: itemWidth,
-                                    itemHeight: itemHeight
-                                )
-                            }
-                        }
-                    default:
-                        break
-                    }
-                }
-                .onEnded { _ in
-                    endDrag()
-                }
-        )
     }
 
     // MARK: - Position Calculation
@@ -177,13 +154,21 @@ struct ReorderPagesView: View {
         return (screenWidth - totalSpacing - totalPadding) / CGFloat(columns)
     }
 
+    private func thumbnailCenter(for index: Int, itemWidth: CGFloat, itemHeight: CGFloat) -> CGPoint {
+        let col = index % columns
+        let row = index / columns
+        let cellHeight = itemHeight + 32 // thumbnail + spacing + label
+        let x = horizontalPadding + CGFloat(col) * (itemWidth + spacing) + itemWidth / 2
+        // Center of thumbnail only, not the whole cell (which includes label below)
+        let y = topPadding + CGFloat(row) * (cellHeight + verticalSpacing) + itemHeight / 2
+        return CGPoint(x: x, y: y)
+    }
+
     private func indexAtPosition(_ position: CGPoint, itemWidth: CGFloat, itemHeight: CGFloat) -> Int? {
-        let cellHeight = itemHeight + 24 // page number label
+        let cellHeight = itemHeight + 32
         let totalCellWidth = itemWidth + spacing
         let totalCellHeight = cellHeight + verticalSpacing
 
-        // Adjust for grid origin (approximate - we're in global coordinates)
-        // The grid starts after top bar (~56pt) + divider + topPadding
         let gridTopOffset: CGFloat = 56 + topPadding
         let adjustedX = position.x - horizontalPadding
         let adjustedY = position.y - gridTopOffset
@@ -203,30 +188,26 @@ struct ReorderPagesView: View {
 
     // MARK: - Drag Handling
 
-    private func startDrag(page: ScannedPage, at location: CGPoint) {
+    private func startLongPress(page: ScannedPage, at location: CGPoint, itemWidth: CGFloat, itemHeight: CGFloat, screenWidth: CGFloat, index: Int) {
+        // Calculate the center position of the thumbnail for initial overlay position
+        let center = thumbnailCenter(for: index, itemWidth: itemWidth, itemHeight: itemHeight)
+        // Adjust for the top bar and scroll view offset (approximate)
+        let adjustedCenter = CGPoint(x: center.x, y: center.y + 56)
+
         draggedPageId = page.id
-        isDragging = true
-        dragStartPosition = location
-        currentDragPosition = location
+        isLongPressActive = true
+        currentDragPosition = adjustedCenter
     }
 
     private func handleDrag(location: CGPoint, itemWidth: CGFloat, itemHeight: CGFloat) {
-        // Update drag position - this directly moves the overlay
+        isDragging = true
         currentDragPosition = location
 
         guard let draggedId = draggedPageId,
               let currentIndex = reorderedPages.firstIndex(where: { $0.id == draggedId }) else { return }
 
-        // Check position with pickup offset applied
-        let testPosition = CGPoint(
-            x: location.x + pickupOffset.width,
-            y: location.y + pickupOffset.height
-        )
-
-        // Find target index based on drag position
-        if let targetIndex = indexAtPosition(testPosition, itemWidth: itemWidth, itemHeight: itemHeight),
+        if let targetIndex = indexAtPosition(location, itemWidth: itemWidth, itemHeight: itemHeight),
            targetIndex != currentIndex {
-            // Reorder - only the grid animates, dragged item stays with finger
             withAnimation(.easeInOut(duration: reorderAnimationDuration)) {
                 reorderedPages.move(
                     fromOffsets: IndexSet(integer: currentIndex),
@@ -237,25 +218,30 @@ struct ReorderPagesView: View {
     }
 
     private func endDrag() {
-        withAnimation(.easeOut(duration: 0.2)) {
-            isDragging = false
-            draggedPageId = nil
-        }
+        isLongPressActive = false
+        isDragging = false
+        draggedPageId = nil
     }
 }
 
-// MARK: - Page Cell
+// MARK: - Page Cell Container (handles gestures)
 
-struct PageCell: View {
+struct PageCellContainer: View {
     let page: ScannedPage
-    let index: Int
+    let displayIndex: Int
     let itemWidth: CGFloat
     let itemHeight: CGFloat
     let isBeingDragged: Bool
     let isAnyDragging: Bool
     let onDelete: () -> Void
+    let onLongPressStart: (CGPoint) -> Void
+    let onDragChanged: (CGPoint) -> Void
+    let onDragEnded: () -> Void
+
+    @State private var hasStartedLongPress = false
 
     var body: some View {
+        // The entire cell including the number - moves as one unit
         VStack(spacing: 8) {
             ZStack(alignment: .topLeading) {
                 if isBeingDragged {
@@ -269,7 +255,6 @@ struct PageCell: View {
                 } else {
                     thumbnailImage
 
-                    // Delete button - hidden during any drag
                     if !isAnyDragging {
                         deleteButton
                     }
@@ -277,10 +262,40 @@ struct PageCell: View {
             }
             .frame(width: itemWidth, height: itemHeight)
 
-            Text("\(index + 1)")
+            // Page number - always shows, moves with the cell
+            // Use transaction to disable animation on text changes to prevent duplicates
+            Text("\(displayIndex)")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.blue)
+                .foregroundColor(isBeingDragged ? .blue.opacity(0.5) : .blue)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
         }
+        .gesture(
+            LongPressGesture(minimumDuration: 0.1)
+                .onChanged { _ in
+                    // Long press is being recognized
+                }
+                .onEnded { _ in
+                    // Long press completed - start drag mode
+                    hasStartedLongPress = true
+                    onLongPressStart(.zero)
+                }
+                .simultaneously(with:
+                    DragGesture(coordinateSpace: .global)
+                        .onChanged { value in
+                            if hasStartedLongPress {
+                                onDragChanged(value.location)
+                            }
+                        }
+                        .onEnded { _ in
+                            if hasStartedLongPress {
+                                hasStartedLongPress = false
+                                onDragEnded()
+                            }
+                        }
+                )
+        )
     }
 
     @ViewBuilder
@@ -325,8 +340,11 @@ struct DraggedPageOverlay: View {
     let itemWidth: CGFloat
     let itemHeight: CGFloat
     let position: CGPoint
+    let baseScale: CGFloat
+    let maxScale: CGFloat
 
-    @State private var pulseScale: CGFloat = 1.0
+    @State private var currentScale: CGFloat = 1.0
+    @State private var isPulsing = false
 
     var body: some View {
         let imagePath = page.croppedImagePath ?? page.originalImagePath
@@ -337,14 +355,21 @@ struct DraggedPageOverlay: View {
                 .frame(width: itemWidth, height: itemHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 10)
-                .scaleEffect(pulseScale)
+                .scaleEffect(currentScale)
                 .position(position)
                 .onAppear {
-                    withAnimation(
-                        .easeInOut(duration: 0.5)
-                        .repeatForever(autoreverses: true)
-                    ) {
-                        pulseScale = 1.06
+                    // Immediately scale up
+                    currentScale = baseScale
+                    // Start pulsing after a brief moment
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isPulsing = true
+                    }
+                }
+                .onChange(of: isPulsing) { pulsing in
+                    if pulsing {
+                        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
+                            currentScale = maxScale
+                        }
                     }
                 }
         }
