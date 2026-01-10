@@ -100,6 +100,12 @@ struct DocumentDetailView: View {
                         spacing: 12
                     )
                 }
+                .onTapGesture {
+                    // Dismiss keyboard and apply name edit when tapping on carousel area
+                    if isEditingName {
+                        finishEditingName()
+                    }
+                }
 
                 bottomControls
             }
@@ -265,6 +271,11 @@ struct DocumentDetailView: View {
     }
 
     private func shareDocument() {
+        // Apply any pending name edit before sharing
+        if isEditingName {
+            finishEditingName()
+        }
+
         if exportType == .pdf {
             sharePDF()
         } else {
