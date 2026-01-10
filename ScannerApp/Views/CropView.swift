@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Vision
 
 struct CropView: View {
     let originalImage: UIImage
@@ -10,13 +11,12 @@ struct CropView: View {
     @State private var corners: [CGPoint] = []
     @State private var currentViewSize: CGSize = .zero
     @State private var imageFrame: CGRect = .zero
-    @State private var activeHandleIndex: Int? = nil
     @State private var magnifierPosition: CGPoint = .zero
     @State private var showMagnifier = false
+    @State private var isInitialized = false
 
     private let handleSize: CGFloat = 24
-    private let edgeHandleSize: CGFloat = 14
-    private let magnifierSize: CGFloat = 120
+    private let magnifierSize: CGFloat = 140
     private let magnifierZoom: CGFloat = 2.5
 
     var body: some View {
@@ -67,12 +67,18 @@ struct CropView: View {
 
                             // Corner handles
                             ForEach(0..<4, id: \.self) { index in
-                                CornerHandleView(
-                                    position: $corners[index],
+                                CropCornerHandle(
+                                    position: corners[index],
                                     size: handleSize,
-                                    onDragStart: { handleDragStart(index: index) },
-                                    onDragChanged: { pos in handleDragChanged(index: index, position: pos) },
-                                    onDragEnded: { handleDragEnded() }
+                                    onDragChanged: { newPosition in
+                                        handleCornerDrag(index: index, position: newPosition)
+                                    },
+                                    onDragStarted: {
+                                        showMagnifier = true
+                                    },
+                                    onDragEnded: {
+                                        showMagnifier = false
+                                    }
                                 )
                             }
 
@@ -83,39 +89,44 @@ struct CropView: View {
                                     x: (corners[index].x + corners[nextIndex].x) / 2,
                                     y: (corners[index].y + corners[nextIndex].y) / 2
                                 )
-                                EdgeHandleView(
-                                    midpoint: midpoint,
+                                CropEdgeHandle(
+                                    position: midpoint,
                                     isHorizontal: index == 0 || index == 2,
-                                    onDragChanged: { delta in
-                                        handleEdgeDrag(index: index, delta: delta)
+                                    onDragChanged: { newPosition in
+                                        handleEdgeDrag(index: index, position: newPosition)
                                     },
-                                    onDragStart: { handleDragStart(index: index + 10) },
-                                    onDragEnded: { handleDragEnded() }
+                                    onDragStarted: {
+                                        showMagnifier = true
+                                    },
+                                    onDragEnded: {
+                                        showMagnifier = false
+                                    }
                                 )
                             }
                         }
 
                         // Magnifier loupe
-                        if showMagnifier {
-                            MagnifierView(
+                        if showMagnifier && imageFrame.width > 0 {
+                            CropMagnifierView(
                                 image: originalImage,
-                                position: magnifierPosition,
+                                focusPoint: magnifierPosition,
                                 imageFrame: imageFrame,
                                 size: magnifierSize,
                                 zoom: magnifierZoom
                             )
                         }
                     }
+                    .coordinateSpace(name: "cropArea")
                     .onAppear {
                         currentViewSize = geometry.size
                         imageFrame = calculateImageFrame(in: geometry.size)
-                        initializeCorners()
+                        initializeCornersIfNeeded()
                     }
                     .onChange(of: geometry.size) { newSize in
                         currentViewSize = newSize
                         imageFrame = calculateImageFrame(in: newSize)
-                        if corners.isEmpty {
-                            initializeCorners()
+                        if !isInitialized {
+                            initializeCornersIfNeeded()
                         }
                     }
                 }
@@ -138,8 +149,9 @@ struct CropView: View {
         return CGRect(x: x, y: y, width: scaledWidth, height: scaledHeight)
     }
 
-    private func initializeCorners() {
-        guard corners.isEmpty && imageFrame.width > 0 else { return }
+    private func initializeCornersIfNeeded() {
+        guard !isInitialized && imageFrame.width > 0 else { return }
+        isInitialized = true
 
         if let initial = initialCorners, initial.count == 4 {
             // Convert from image coordinates to view coordinates
@@ -153,15 +165,70 @@ struct CropView: View {
                 )
             }
         } else {
-            // Default to image bounds with padding
-            let padding: CGFloat = 20
-            corners = [
-                CGPoint(x: imageFrame.minX + padding, y: imageFrame.minY + padding),
-                CGPoint(x: imageFrame.maxX - padding, y: imageFrame.minY + padding),
-                CGPoint(x: imageFrame.maxX - padding, y: imageFrame.maxY - padding),
-                CGPoint(x: imageFrame.minX + padding, y: imageFrame.maxY - padding)
-            ]
+            // Try to detect rectangle using Vision
+            detectRectangle()
         }
+    }
+
+    private func detectRectangle() {
+        guard let cgImage = originalImage.cgImage else {
+            setDefaultCorners()
+            return
+        }
+
+        let request = VNDetectRectanglesRequest { request, error in
+            DispatchQueue.main.async {
+                if let results = request.results as? [VNRectangleObservation],
+                   let rect = results.first {
+                    // Convert Vision coordinates to view coordinates
+                    let scaleX = imageFrame.width
+                    let scaleY = imageFrame.height
+
+                    // Vision coordinates: origin bottom-left, normalized 0-1
+                    corners = [
+                        CGPoint(
+                            x: imageFrame.origin.x + rect.topLeft.x * scaleX,
+                            y: imageFrame.origin.y + (1 - rect.topLeft.y) * scaleY
+                        ),
+                        CGPoint(
+                            x: imageFrame.origin.x + rect.topRight.x * scaleX,
+                            y: imageFrame.origin.y + (1 - rect.topRight.y) * scaleY
+                        ),
+                        CGPoint(
+                            x: imageFrame.origin.x + rect.bottomRight.x * scaleX,
+                            y: imageFrame.origin.y + (1 - rect.bottomRight.y) * scaleY
+                        ),
+                        CGPoint(
+                            x: imageFrame.origin.x + rect.bottomLeft.x * scaleX,
+                            y: imageFrame.origin.y + (1 - rect.bottomLeft.y) * scaleY
+                        )
+                    ]
+                } else {
+                    setDefaultCorners()
+                }
+            }
+        }
+
+        request.minimumAspectRatio = 0.3
+        request.maximumAspectRatio = 1.0
+        request.minimumSize = 0.2
+        request.maximumObservations = 1
+        request.minimumConfidence = 0.5
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
+            try? handler.perform([request])
+        }
+    }
+
+    private func setDefaultCorners() {
+        let padding: CGFloat = 20
+        corners = [
+            CGPoint(x: imageFrame.minX + padding, y: imageFrame.minY + padding),
+            CGPoint(x: imageFrame.maxX - padding, y: imageFrame.minY + padding),
+            CGPoint(x: imageFrame.maxX - padding, y: imageFrame.maxY - padding),
+            CGPoint(x: imageFrame.minX + padding, y: imageFrame.maxY - padding)
+        ]
     }
 
     private func convertCornersToImageCoordinates() -> [CGPoint] {
@@ -180,12 +247,7 @@ struct CropView: View {
 
     // MARK: - Drag Handling
 
-    private func handleDragStart(index: Int) {
-        activeHandleIndex = index
-        showMagnifier = true
-    }
-
-    private func handleDragChanged(index: Int, position: CGPoint) {
+    private func handleCornerDrag(index: Int, position: CGPoint) {
         guard index < corners.count else { return }
 
         // Clamp to image bounds
@@ -196,50 +258,47 @@ struct CropView: View {
         magnifierPosition = CGPoint(x: clampedX, y: clampedY)
     }
 
-    private func handleEdgeDrag(index: Int, delta: CGSize) {
+    private func handleEdgeDrag(index: Int, position: CGPoint) {
         let nextIndex = (index + 1) % 4
 
         // For top/bottom edges (0 and 2), move vertically
         // For left/right edges (1 and 3), move horizontally
         if index == 0 || index == 2 {
             // Top or bottom edge - move both corners vertically
-            let newY1 = max(imageFrame.minY, min(imageFrame.maxY, corners[index].y + delta.height))
-            let newY2 = max(imageFrame.minY, min(imageFrame.maxY, corners[nextIndex].y + delta.height))
-            corners[index].y = newY1
-            corners[nextIndex].y = newY2
+            let clampedY = max(imageFrame.minY, min(imageFrame.maxY, position.y))
+            let deltaY = clampedY - (corners[index].y + corners[nextIndex].y) / 2
 
-            magnifierPosition = CGPoint(
-                x: (corners[index].x + corners[nextIndex].x) / 2,
-                y: newY1
-            )
+            corners[index].y = max(imageFrame.minY, min(imageFrame.maxY, corners[index].y + deltaY))
+            corners[nextIndex].y = max(imageFrame.minY, min(imageFrame.maxY, corners[nextIndex].y + deltaY))
+
+            // Use edge midpoint X, not finger position - magnifier should only move vertically for horizontal edges
+            let midpointX = (corners[index].x + corners[nextIndex].x) / 2
+            magnifierPosition = CGPoint(x: midpointX, y: clampedY)
         } else {
             // Left or right edge - move both corners horizontally
-            let newX1 = max(imageFrame.minX, min(imageFrame.maxX, corners[index].x + delta.width))
-            let newX2 = max(imageFrame.minX, min(imageFrame.maxX, corners[nextIndex].x + delta.width))
-            corners[index].x = newX1
-            corners[nextIndex].x = newX2
+            let clampedX = max(imageFrame.minX, min(imageFrame.maxX, position.x))
+            let deltaX = clampedX - (corners[index].x + corners[nextIndex].x) / 2
 
-            magnifierPosition = CGPoint(
-                x: newX1,
-                y: (corners[index].y + corners[nextIndex].y) / 2
-            )
+            corners[index].x = max(imageFrame.minX, min(imageFrame.maxX, corners[index].x + deltaX))
+            corners[nextIndex].x = max(imageFrame.minX, min(imageFrame.maxX, corners[nextIndex].x + deltaX))
+
+            // Use edge midpoint Y, not finger position - magnifier should only move horizontally for vertical edges
+            let midpointY = (corners[index].y + corners[nextIndex].y) / 2
+            magnifierPosition = CGPoint(x: clampedX, y: midpointY)
         }
-    }
-
-    private func handleDragEnded() {
-        activeHandleIndex = nil
-        showMagnifier = false
     }
 }
 
 // MARK: - Corner Handle
 
-struct CornerHandleView: View {
-    @Binding var position: CGPoint
+struct CropCornerHandle: View {
+    let position: CGPoint
     let size: CGFloat
-    let onDragStart: () -> Void
     let onDragChanged: (CGPoint) -> Void
+    let onDragStarted: () -> Void
     let onDragEnded: () -> Void
+
+    @State private var isDragging = false
 
     var body: some View {
         Circle()
@@ -248,14 +307,16 @@ struct CornerHandleView: View {
             .overlay(Circle().stroke(Color.white, lineWidth: 3))
             .position(position)
             .gesture(
-                DragGesture(coordinateSpace: .local)
+                DragGesture(coordinateSpace: .named("cropArea"))
                     .onChanged { value in
-                        if value.translation == .zero {
-                            onDragStart()
+                        if !isDragging {
+                            isDragging = true
+                            onDragStarted()
                         }
                         onDragChanged(value.location)
                     }
                     .onEnded { _ in
+                        isDragging = false
                         onDragEnded()
                     }
             )
@@ -264,14 +325,14 @@ struct CornerHandleView: View {
 
 // MARK: - Edge Handle
 
-struct EdgeHandleView: View {
-    let midpoint: CGPoint
+struct CropEdgeHandle: View {
+    let position: CGPoint
     let isHorizontal: Bool
-    let onDragChanged: (CGSize) -> Void
-    let onDragStart: () -> Void
+    let onDragChanged: (CGPoint) -> Void
+    let onDragStarted: () -> Void
     let onDragEnded: () -> Void
 
-    @State private var lastDragValue: CGSize = .zero
+    @State private var isDragging = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
@@ -284,22 +345,18 @@ struct EdgeHandleView: View {
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(Color.white, lineWidth: 2)
             )
-            .position(midpoint)
+            .position(position)
             .gesture(
-                DragGesture(coordinateSpace: .local)
+                DragGesture(coordinateSpace: .named("cropArea"))
                     .onChanged { value in
-                        if lastDragValue == .zero {
-                            onDragStart()
+                        if !isDragging {
+                            isDragging = true
+                            onDragStarted()
                         }
-                        let delta = CGSize(
-                            width: value.translation.width - lastDragValue.width,
-                            height: value.translation.height - lastDragValue.height
-                        )
-                        lastDragValue = value.translation
-                        onDragChanged(delta)
+                        onDragChanged(value.location)
                     }
                     .onEnded { _ in
-                        lastDragValue = .zero
+                        isDragging = false
                         onDragEnded()
                     }
             )
@@ -364,51 +421,64 @@ struct CropMaskView: View {
 
 // MARK: - Magnifier
 
-struct MagnifierView: View {
+struct CropMagnifierView: View {
     let image: UIImage
-    let position: CGPoint
+    let focusPoint: CGPoint
     let imageFrame: CGRect
     let size: CGFloat
     let zoom: CGFloat
 
-    private var magnifierOffset: CGFloat {
-        size / 2 + 40 // Position above the handle
-    }
-
     var body: some View {
-        let displayPosition = CGPoint(
-            x: position.x,
-            y: max(size / 2 + 10, position.y - magnifierOffset)
-        )
+        // Position magnifier above the focus point
+        let displayY = max(size / 2 + 10, focusPoint.y - size / 2 - 50)
+        let displayPosition = CGPoint(x: focusPoint.x, y: displayY)
+
+        // Calculate the relative position within the image (0-1)
+        let relX = (focusPoint.x - imageFrame.origin.x) / imageFrame.width
+        let relY = (focusPoint.y - imageFrame.origin.y) / imageFrame.height
+
+        // Clamp to valid range
+        let clampedRelX = max(0, min(1, relX))
+        let clampedRelY = max(0, min(1, relY))
+
+        // Zoomed image dimensions
+        let zoomedWidth = imageFrame.width * zoom
+        let zoomedHeight = imageFrame.height * zoom
+
+        // Offset to center the focus point in the magnifier
+        // With center alignment (default), the image center is at the frame center,
+        // so we need to offset from center (0.5) to the focus point
+        let offsetX = (0.5 - clampedRelX) * zoomedWidth
+        let offsetY = (0.5 - clampedRelY) * zoomedHeight
 
         ZStack {
             // Zoomed image portion
             Image(uiImage: image)
                 .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(
-                    width: imageFrame.width * zoom,
-                    height: imageFrame.height * zoom
-                )
-                .offset(
-                    x: -(position.x - imageFrame.origin.x) * zoom + size / 2,
-                    y: -(position.y - imageFrame.origin.y) * zoom + size / 2
-                )
+                .frame(width: zoomedWidth, height: zoomedHeight)
+                .offset(x: offsetX, y: offsetY)
                 .frame(width: size, height: size)
                 .clipShape(Circle())
 
-            // Corner indicator lines
+            // Crosshair
             Path { path in
-                // Crosshair
                 let center = size / 2
                 let lineLength: CGFloat = 20
+                let gap: CGFloat = 6
 
+                // Horizontal lines with gap
                 path.move(to: CGPoint(x: center - lineLength, y: center))
+                path.addLine(to: CGPoint(x: center - gap, y: center))
+                path.move(to: CGPoint(x: center + gap, y: center))
                 path.addLine(to: CGPoint(x: center + lineLength, y: center))
+
+                // Vertical lines with gap
                 path.move(to: CGPoint(x: center, y: center - lineLength))
+                path.addLine(to: CGPoint(x: center, y: center - gap))
+                path.move(to: CGPoint(x: center, y: center + gap))
                 path.addLine(to: CGPoint(x: center, y: center + lineLength))
             }
-            .stroke(Color.cyan, lineWidth: 1)
+            .stroke(Color.cyan, lineWidth: 1.5)
             .frame(width: size, height: size)
 
             // Border
@@ -416,7 +486,7 @@ struct MagnifierView: View {
                 .stroke(Color.white, lineWidth: 3)
                 .frame(width: size, height: size)
         }
-        .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 5)
         .position(displayPosition)
     }
 }
