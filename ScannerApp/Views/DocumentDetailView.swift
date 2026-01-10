@@ -96,7 +96,7 @@ struct DocumentDetailView: View {
                     PageCarouselView(
                         pages: document.pages,
                         currentPageIndex: $currentPageIndex,
-                        pageWidth: geometry.size.width - 80,
+                        pageWidth: geometry.size.width - 48,
                         spacing: 12,
                         onTapBackground: {
                             if isEditingName {
