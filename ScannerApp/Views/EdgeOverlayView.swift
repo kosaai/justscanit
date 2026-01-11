@@ -18,7 +18,7 @@ struct EdgeOverlayView: View {
                     path.addLine(to: corners[3])
                     path.closeSubpath()
                 }
-                .fill(Color.blue.opacity(0.15))
+                .fill(AppColors.accent.opacity(0.15))
 
                 // Stroke
                 Path { path in
@@ -28,12 +28,12 @@ struct EdgeOverlayView: View {
                     path.addLine(to: corners[3])
                     path.closeSubpath()
                 }
-                .stroke(Color.blue, lineWidth: 2)
+                .stroke(AppColors.accent, lineWidth: 2)
 
                 // Corner dots
                 ForEach(0..<4, id: \.self) { index in
                     Circle()
-                        .fill(Color.blue)
+                        .fill(AppColors.accent)
                         .frame(width: 10, height: 10)
                         .position(corners[index])
                 }
