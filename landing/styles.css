@@ -268,7 +268,13 @@ a {
     opacity: 1;
 }
 
-.btn-primary span {
+.btn-primary span,
+.btn-primary {
+    position: relative;
+}
+
+.btn-primary span,
+.btn-primary::after {
     position: relative;
     z-index: 1;
 }
